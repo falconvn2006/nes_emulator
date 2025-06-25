@@ -4,10 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace nes_emulator
+namespace nes_emulator.src
 {
-	public class Utils
-	{
+    public class Utils
+    {
 
-	}
+    }
 }
