@@ -97,12 +97,12 @@ namespace nes_emulator.src
 
         private void Write(ushort addr, byte data)
         {
-            bus.Write(addr, data);
+            bus.CPUWrite(addr, data);
         }
 
         private ushort Read(ushort addr)
         {
-            return bus.Read(addr, false);
+            return bus.CPURead(addr, false);
         }
 
         private void SetFlag(FLAGS6502 f, bool v)
@@ -1372,7 +1372,7 @@ namespace nes_emulator.src
                 string sInst = "$" + addr.ToString("X4") + ": ";
 
                 // Read instruction, and get its readable name
-                byte opcode = (byte)bus.Read((ushort)addr, true); addr++;
+                byte opcode = (byte)bus.CPURead((ushort)addr, true); addr++;
                 sInst += lookup[opcode].name + " ";
 
                 // Get oprands from desired locations, and form the
@@ -1386,66 +1386,66 @@ namespace nes_emulator.src
                 }
                 else if (lookup[opcode].addrmode == IMM)
                 {
-                    value = (byte)bus.Read((ushort)addr, true); addr++;
+                    value = (byte)bus.CPURead((ushort)addr, true); addr++;
                     sInst += "#$" + value.ToString("X2") + " {IMM}";
                 }
                 else if (lookup[opcode].addrmode == ZP0)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
                     hi = 0x00;
                     sInst += "$" + lo.ToString("X2") + " {ZP0}";
                 }
                 else if (lookup[opcode].addrmode == ZPX)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
                     hi = 0x00;
                     sInst += "$" + lo.ToString("X2") + ", X {ZPX}";
                 }
                 else if (lookup[opcode].addrmode == ZPY)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
                     hi = 0x00;
                     sInst += "$" + lo.ToString("X2") + ", Y {ZPY}";
                 }
                 else if (lookup[opcode].addrmode == IZX)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
                     hi = 0x00;
                     sInst += "($" + lo.ToString("X2") + ", X) {IZX}";
                 }
                 else if (lookup[opcode].addrmode == IZY)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
                     hi = 0x00;
                     sInst += "($" + lo.ToString("X2") + "), Y {IZY}";
                 }
                 else if (lookup[opcode].addrmode == ABS)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
-                    hi = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
+                    hi = (byte)bus.CPURead((ushort)addr, true); addr++;
                     sInst += "$" + ((ushort)(hi << 8) | lo).ToString("X4") + " {ABS}";
                 }
                 else if (lookup[opcode].addrmode == ABX)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
-                    hi = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
+                    hi = (byte)bus.CPURead((ushort)addr, true); addr++;
                     sInst += "$" + ((ushort)(hi << 8) | lo).ToString("X4") + ", X {ABX}";
                 }
                 else if (lookup[opcode].addrmode == ABY)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
-                    hi = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
+                    hi = (byte)bus.CPURead((ushort)addr, true); addr++;
                     sInst += "$" + ((ushort)(hi << 8) | lo).ToString("X4") + ", Y {ABY}";
                 }
                 else if (lookup[opcode].addrmode == IND)
                 {
-                    lo = (byte)bus.Read((ushort)addr, true); addr++;
-                    hi = (byte)bus.Read((ushort)addr, true); addr++;
+                    lo = (byte)bus.CPURead((ushort)addr, true); addr++;
+                    hi = (byte)bus.CPURead((ushort)addr, true); addr++;
                     sInst += "($" + ((ushort)(hi << 8) | lo).ToString("X4") + ") {IND}";
                 }
                 else if (lookup[opcode].addrmode == REL)
                 {
-                    value = (byte)bus.Read((ushort)addr, true); addr++;
+                    value = (byte)bus.CPURead((ushort)addr, true); addr++;
                     sInst += "$" + value.ToString("X2") + " [$" + (addr + value).ToString("X4") + "] {REL}";
                 }
 

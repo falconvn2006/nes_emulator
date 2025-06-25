@@ -11,13 +11,17 @@ namespace nes_emulator.src
     public class Bus
     {
         public CPU cpu6502;
-        public byte[] ram = new byte[64 * 1024];
+        public PPU ppu2C02;
+        public Cartridge cartridge;
+        public byte[] cpuRam = new byte[2048];
+
+        private uint nSystemClockCounter = 0;
 
         public Bus()
         {
-            for (int i = 0; i < ram.Length; i++)
+            for (int i = 0; i < cpuRam.Length; i++)
             {
-                ram[i] = 0x00;
+                cpuRam[i] = 0x00;
             }
 
             cpu6502 = new CPU();
@@ -25,18 +29,48 @@ namespace nes_emulator.src
             cpu6502.ConnectBus(this);
         }
 
-        public void Write(ushort addr, byte data)
+		#region Bus read and write
+		public void CPUWrite(ushort addr, byte data)
         {
-            if (addr >= 0x0000 && addr <= 0xFFFF)
-                ram[addr] = data;
+            if(cartridge.CPUWrite(addr, data)) { }
+            else if (addr >= 0x0000 && addr <= 0xFFFF)
+                cpuRam[addr & 0x07FF] = data;
+            else if(addr >= 0x2000 && addr <= 0x3FFF)
+                ppu2C02.CPUWrite((ushort)(addr & 0x0007), data);
         }
 
-        public ushort Read(ushort addr, bool bReadOnly = false)
+        public ushort CPURead(ushort addr, bool bReadOnly = false)
         {
-            if (addr >= 0x0000 && addr <= 0xFFFF)
-                return ram[addr];
+            byte data = 0x00;
+            if(cartridge.CPURead(addr, bReadOnly)) { }
+            if (addr >= 0x0000 && addr <= 0x1FFF)
+                data = cpuRam[addr & 0x07FF];
+			else if (addr >= 0x2000 && addr <= 0x3FFF)
+				ppu2C02.CPURead((ushort)(addr & 0x0007));
 
-            return 0x00;
+			return 0x00;
         }
-    }
+		#endregion
+
+		#region System Interface
+
+        public void InsertCartridge(ref Cartridge _cartridge)
+        {
+            this.cartridge = _cartridge;
+            ppu2C02.ConnectCartridge(ref _cartridge);
+        }
+
+        public void Reset()
+        {
+            cpu6502.Reset();
+            nSystemClockCounter = 0;
+        }
+
+        public void Clock()
+        {
+
+        }
+
+		#endregion
+	}
 }

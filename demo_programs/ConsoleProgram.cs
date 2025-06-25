@@ -19,11 +19,11 @@ namespace nes_emulator.demo_programs
             string[] hexBytes = program.Split(' ');
             foreach (string bytes in hexBytes)
             {
-                nes.ram[nOffset++] = byte.Parse(bytes, System.Globalization.NumberStyles.HexNumber);
+                nes.cpuRam[nOffset++] = byte.Parse(bytes, System.Globalization.NumberStyles.HexNumber);
             }
 
-            nes.ram[0xFFFC] = 0x00;
-            nes.ram[0xFFFD] = 0x80;
+            nes.cpuRam[0xFFFC] = 0x00;
+            nes.cpuRam[0xFFFD] = 0x80;
 
             mapAsm = nes.cpu6502.Disassemble(0x0000, 0xFFFF);
 
@@ -91,7 +91,7 @@ namespace nes_emulator.demo_programs
                 string sOffset = "$" + nAddr.ToString("X4") + ":";
                 for (int col = 0; col < nColumns; col++)
                 {
-                    sOffset += " " + nes.Read(nAddr, true).ToString("X2");
+                    sOffset += " " + nes.CPURead(nAddr, true).ToString("X2");
                     nAddr += 1;
                 }
 
