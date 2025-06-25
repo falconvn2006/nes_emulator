@@ -1,10 +1,14 @@
 ﻿using nes_emulator.src;
 
-namespace nes_emulator
+namespace nes_emulator.demo_programs
 {
-    internal class Program
+    public class ConsoleProgram
     {
-        static void Main(string[] args)
+        public ConsoleProgram()
+        {
+
+        }
+        public void Run()
         {
             Bus nes = new Bus();
             Dictionary<ushort, string> mapAsm = new Dictionary<ushort, string>();
@@ -80,7 +84,7 @@ namespace nes_emulator
             Console.WriteLine("Hello, World!");
         }
 
-        static void PrintRam(ushort nAddr, int nRows, int nColumns, Bus nes)
+        private void PrintRam(ushort nAddr, int nRows, int nColumns, Bus nes)
         {
             for (int row = 0; row < nRows; row++)
             {
@@ -95,7 +99,7 @@ namespace nes_emulator
             }
         }
 
-        static void PrintInstructions(int nLines, Bus nes, Dictionary<ushort, string> mapAsm)
+        private void PrintInstructions(int nLines, Bus nes, Dictionary<ushort, string> mapAsm)
         {
             if (!mapAsm.TryGetValue(nes.cpu6502.pc, out var currentLine))
                 return;
