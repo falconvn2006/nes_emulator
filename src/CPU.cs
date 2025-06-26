@@ -1446,7 +1446,7 @@ namespace nes_emulator.src
                 else if (lookup[opcode].addrmode == REL)
                 {
                     value = (byte)bus.CPURead((ushort)addr, true); addr++;
-                    sInst += "$" + value.ToString("X2") + " [$" + (addr + value).ToString("X4") + "] {REL}";
+                    sInst += "$" + value.ToString("X2") + " [$" + (addr + (sbyte)value).ToString("X4") + "] {REL}";
                 }
 
                 // Add the formed string to a std::map, using the instruction's

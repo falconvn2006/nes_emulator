@@ -6,8 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-using nes_emulator.src.mapper;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using nes_emulator.src.Mappers;
 
 namespace nes_emulator.src
 {

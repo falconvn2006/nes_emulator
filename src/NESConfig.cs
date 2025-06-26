@@ -6,8 +6,9 @@ using System.Threading.Tasks;
 
 namespace nes_emulator.src
 {
-    public class Utils
+    public static class NESConfig
     {
-
+        public const int NES_WIDTH = 256; // OLD VAL 256
+        public const int NES_HEIGHT = 240; // OLD VAL 240
     }
 }

@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace nes_emulator.src.mapper
+namespace nes_emulator.src.Mappers
 {
     public abstract class Mapper
     {

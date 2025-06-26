@@ -4,7 +4,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace nes_emulator.src
 {
@@ -25,6 +24,7 @@ namespace nes_emulator.src
             }
 
             cpu6502 = new CPU();
+            ppu2C02 = new PPU();
 
             cpu6502.ConnectBus(this);
         }
@@ -42,7 +42,7 @@ namespace nes_emulator.src
         public ushort CPURead(ushort addr, bool bReadOnly = false)
         {
             byte data = 0x00;
-            if(cartridge.CPURead(addr, bReadOnly)) { }
+            if(cartridge.CPURead(addr, ref data)) { }
             if (addr >= 0x0000 && addr <= 0x1FFF)
                 data = cpuRam[addr & 0x07FF];
 			else if (addr >= 0x2000 && addr <= 0x3FFF)
@@ -68,7 +68,12 @@ namespace nes_emulator.src
 
         public void Clock()
         {
-
+            ppu2C02.Clock();
+            if(nSystemClockCounter % 3 == 0)
+            {
+                cpu6502.Clock();
+            }
+            nSystemClockCounter++;
         }
 
 		#endregion
