@@ -39,14 +39,15 @@ namespace nes_emulator.src
                 ppu2C02.CPUWrite((ushort)(addr & 0x0007), data);
         }
 
-        public ushort CPURead(ushort addr, bool bReadOnly = false)
+        public ushort CPURead(ushort addr, bool bReadOnly)
         {
             byte data = 0x00;
             if(cartridge.CPURead(addr, ref data)) { }
-            if (addr >= 0x0000 && addr <= 0x1FFF)
-                data = cpuRam[addr & 0x07FF];
+            else if (addr >= 0x0000 && addr <= 0x1FFF)
+				// System RAM Address Range, mirrored every 2048
+				data = cpuRam[addr & 0x07FF];
 			else if (addr >= 0x2000 && addr <= 0x3FFF)
-				data = ppu2C02.CPURead((ushort)(addr & 0x0007));
+				data = ppu2C02.CPURead((ushort)(addr & 0x0007), bReadOnly);
 
 			return data;
         }
@@ -71,7 +72,11 @@ namespace nes_emulator.src
         public void Clock()
         {
             ppu2C02.Clock();
-            if(nSystemClockCounter % 3 == 0)
+
+			// The CPU runs 3 times slower than the PPU so we only call its
+			// clock() function every 3 times this function is called. We
+			// have a global counter to keep track of this.
+			if (nSystemClockCounter % 3 == 0)
             {
                 cpu6502.Clock();
             }

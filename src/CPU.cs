@@ -17,7 +17,7 @@ namespace nes_emulator.src
             public Func<byte> addrmode;
             public byte cycles;
 
-            public INSTRUCTION(string _name, Func<byte> _operate = null, Func<byte> _addrmode = null, byte cycles = 0)
+            public INSTRUCTION(string _name, Func<byte> _operate, Func<byte> _addrmode, byte cycles = 0)
             {
                 name = _name;
                 operate = _operate;

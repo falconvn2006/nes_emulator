@@ -380,12 +380,12 @@ namespace nes_emulator.src
 
 		ref Pixel GetColourFromPaletteRam(byte palette, byte pixel)
 		{
-			return ref palleteScreen[PPURead((ushort)((0x3F00 + (palette << 2) + pixel))) & 0x3F];
+			return ref palleteScreen[PPURead((ushort)(0x3F00 + (palette << 2) + pixel)) & 0x3F];
 		}
 
 		#region Read and Write Stuff
 
-		public byte CPURead(ushort addr, bool readOnly = false)
+		public byte CPURead(ushort addr, bool readOnly)
 		{
 			byte data = 0x00;
 
@@ -418,11 +418,9 @@ namespace nes_emulator.src
 			{
 				switch (addr)
 				{
-					case 0x0000: // Control
-						data = controlRegister.reg;
+					case 0x0000: // Control -- Not readable
 						break;
-					case 0x0001: // Mask
-						data = maskRegister.reg;
+					case 0x0001: // Mask --  Not readable
 						break;
 					case 0x0002: // Status
 						data = (byte)((statusRegister.reg & 0xE0) | (ppuDataBuffer & 0x1F));
@@ -473,20 +471,20 @@ namespace nes_emulator.src
 					if(addressLatch == 0)
 					{
 						fineX = (byte)(data & 0x07);
-						tramAddr.CoarseX = (byte)(data >> 3);
+						tramAddr.CoarseX = (ushort)(data >> 3);
 						addressLatch = 1;
 					}
 					else
 					{
-						tramAddr.FineY = (byte)(data & 0x07);
-						tramAddr.CoarseY = (byte)(data >> 3);
+						tramAddr.FineY = (ushort)(data & 0x07);
+						tramAddr.CoarseY = (ushort)(data >> 3);
 						addressLatch = 0;
 					}
 					break;
 				case 0x0006: // PPU Address
 					if (addressLatch == 0)
 					{
-						tramAddr.reg = (ushort)((tramAddr.reg & 0xFF00) | (data << 8));
+						tramAddr.reg = (ushort)(((data & 0x3F) << 8) | (tramAddr.reg & 0x00FF));
 						addressLatch = 1;
 					}
 					else
@@ -516,7 +514,7 @@ namespace nes_emulator.src
 			{
 				// If the cartridge cant map the address, have
 				// a physical location ready here
-				data = tblPattern[((addr & 0x1000) >> 12), addr & 0x0FFF];
+				data = tblPattern[(addr & 0x1000) >> 12, addr & 0x0FFF];
 			}
 			else if(addr >= 0x2000 && addr <= 0x3EFF)
 			{
@@ -573,7 +571,7 @@ namespace nes_emulator.src
 			}
 			else if (addr >= 0x0000 && addr <= 0x1FFF)
 			{
-				tblPattern[((addr & 0x1000) >> 12), addr & 0x0FFF] = data;
+				tblPattern[(addr & 0x1000) >> 12, addr & 0x0FFF] = data;
 			}
 			else if (addr >= 0x2000 && addr <= 0x3EFF)
 			{
@@ -767,8 +765,8 @@ namespace nes_emulator.src
 								| (Convert.ToByte(vramAddr.NametableX) << 10)
 								| ((vramAddr.CoarseY >> 2) << 3)
 								| (vramAddr.CoarseX >> 2)));
-							if ((Convert.ToByte(vramAddr.CoarseY) & 0x02) != 0) bgNextTileAttrib >>= 4;
-							if ((Convert.ToByte(vramAddr.CoarseX) & 0x02) != 0) bgNextTileAttrib >>= 2;
+							if ((vramAddr.CoarseY & 0x02) != 0) bgNextTileAttrib >>= 4;
+							if ((vramAddr.CoarseX & 0x02) != 0) bgNextTileAttrib >>= 2;
 							bgNextTileAttrib &= 0x03;
 							break;
 						case 4:
@@ -814,11 +812,14 @@ namespace nes_emulator.src
 				// Post Render Scanline - Do Nothing!
 			}
 
-			if (scanline == 241 && cycle == 1)
+			if(scanline  >= 241 && scanline < 261)
 			{
-				statusRegister.VerticalBlank = true;
-				if (controlRegister.EnableNMI)
-					nmi = true;
+				if (scanline == 241 && cycle == 1)
+				{
+					statusRegister.VerticalBlank = true;
+					if (controlRegister.EnableNMI)
+						nmi = true;
+				}
 			}
 
 
@@ -888,6 +889,8 @@ namespace nes_emulator.src
 			{
 				for(ushort nTileX = 0; nTileX < 16; nTileX++)
 				{
+					// Convert the 2D tile coordinate into a 1D offset into the pattern
+					// table memory.
 					ushort nOffset = (ushort)(nTileY * 256 + nTileX * 16);
 
 					for(ushort row = 0; row < 8; row++)
