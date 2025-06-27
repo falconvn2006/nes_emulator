@@ -33,7 +33,7 @@ namespace nes_emulator.src
 		public void CPUWrite(ushort addr, byte data)
         {
             if(cartridge.CPUWrite(addr, data)) { }
-            else if (addr >= 0x0000 && addr <= 0xFFFF)
+            else if (addr >= 0x0000 && addr <= 0x1FFF)
                 cpuRam[addr & 0x07FF] = data;
             else if(addr >= 0x2000 && addr <= 0x3FFF)
                 ppu2C02.CPUWrite((ushort)(addr & 0x0007), data);
@@ -46,9 +46,9 @@ namespace nes_emulator.src
             if (addr >= 0x0000 && addr <= 0x1FFF)
                 data = cpuRam[addr & 0x07FF];
 			else if (addr >= 0x2000 && addr <= 0x3FFF)
-				ppu2C02.CPURead((ushort)(addr & 0x0007));
+				data = ppu2C02.CPURead((ushort)(addr & 0x0007));
 
-			return 0x00;
+			return data;
         }
 		#endregion
 
@@ -62,7 +62,9 @@ namespace nes_emulator.src
 
         public void Reset()
         {
+            // Call reset on the cartridge
             cpu6502.Reset();
+            ppu2C02.Reset();
             nSystemClockCounter = 0;
         }
 
@@ -73,6 +75,13 @@ namespace nes_emulator.src
             {
                 cpu6502.Clock();
             }
+
+            if(ppu2C02.nmi)
+            {
+                ppu2C02.nmi = false;
+                cpu6502.NMI();
+            }
+
             nSystemClockCounter++;
         }
 

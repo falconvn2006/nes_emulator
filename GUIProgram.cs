@@ -13,7 +13,7 @@ namespace nes_emulator
 	{
 		static void Main(string[] args)
 		{
-			using (Emulator emulator = new Emulator(800, 600, "NES Emulator"))
+			using (Emulator emulator = new Emulator(1600, 1200, "NES Emulator"))
 			{
 				emulator.Run();
 			}

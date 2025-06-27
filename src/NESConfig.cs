@@ -10,5 +10,7 @@ namespace nes_emulator.src
     {
         public const int NES_WIDTH = 256; // OLD VAL 256
         public const int NES_HEIGHT = 240; // OLD VAL 240
+
+        public const string NES_CARTRIDGE_FILE = "Super Mario Bros.nes";
     }
 }

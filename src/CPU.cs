@@ -30,14 +30,14 @@ namespace nes_emulator.src
 
         public enum FLAGS6502
         {
-            C = 1 << 0, // Carry bit
-            Z = 1 << 1, // Zero
-            I = 1 << 2, // Disable Interrupts
-            D = 1 << 3, // Decimal Mode
-            B = 1 << 4, // Break
-            U = 1 << 5, // Unused
-            V = 1 << 6, // Overflow
-            N = 1 << 7, // Negative
+            C = (1 << 0), // Carry bit
+            Z = (1 << 1), // Zero
+            I = (1 << 2), // Disable Interrupts
+            D = (1 << 3), // Decimal Mode
+            B = (1 << 4), // Break
+            U = (1 << 5), // Unused
+            V = (1 << 6), // Overflow
+            N = (1 << 7), // Negative
         }
 
         public byte a = 0x00;      // Accumulator Register
@@ -113,7 +113,7 @@ namespace nes_emulator.src
             }
             else
             {
-                status &= (byte)~(byte)f;
+                status = (byte)(status & ~(byte)f);
             }
         }
 
@@ -241,7 +241,7 @@ namespace nes_emulator.src
             addr_abs = (ushort)(hi << 8 | lo);
             addr_abs += x;
 
-            if ((addr_abs & 0xFF00) != hi << 8)
+            if ((addr_abs & 0xFF00) != (hi << 8))
                 return 1;
             else
                 return 0;
@@ -1077,11 +1077,11 @@ namespace nes_emulator.src
         {
             stkp++;
             status = (byte)Read((ushort)(0x0100 + stkp));
-            status &= Convert.ToByte(~(byte)FLAGS6502.B);
-            status &= Convert.ToByte(~(byte)FLAGS6502.U);
+            status = Convert.ToByte((byte)status & (~(byte)FLAGS6502.B));
+            status = Convert.ToByte((byte)status & (~(byte)FLAGS6502.U));
 
             stkp++;
-            pc = Read((ushort)(0x0100 + stkp));
+            pc = (ushort)Read((ushort)(0x0100 + stkp));
             stkp++;
             pc |= (ushort)(Read((ushort)(0x0100 + stkp)) << 8);
             return 0;
@@ -1240,7 +1240,7 @@ namespace nes_emulator.src
             {
                 opcode = (byte)Read(pc);
 
-                //SetFlag(FLAGS6502.U, true);
+                SetFlag(FLAGS6502.U, true);
 
                 pc++;
 
@@ -1251,7 +1251,7 @@ namespace nes_emulator.src
 
                 cycles += (byte)(additional_cycle1 & additional_cycle2);
 
-                //SetFlag(FLAGS6502.U, true);
+                SetFlag(FLAGS6502.U, true);
             }
 
             //clock_count++;
@@ -1284,7 +1284,7 @@ namespace nes_emulator.src
         {
             if (GetFlag(FLAGS6502.I) == 0)
             {
-                Write((ushort)(0x0100 + stkp), (byte)(pc >> 8 & 0x00FF));
+                Write((ushort)(0x0100 + stkp), (byte)((pc >> 8) & 0x00FF));
                 stkp--;
                 Write((ushort)(0x0100 + stkp), (byte)(pc & 0x00FF));
                 stkp--;
@@ -1306,7 +1306,7 @@ namespace nes_emulator.src
 
         public void NMI()
         {
-            Write((ushort)(0x0100 + stkp), (byte)(pc >> 8 & 0x00FF));
+            Write((ushort)(0x0100 + stkp), (byte)((pc >> 8) & 0x00FF));
             stkp--;
             Write((ushort)(0x0100 + stkp), (byte)(pc & 0x00FF));
             stkp--;
@@ -1345,17 +1345,6 @@ namespace nes_emulator.src
             Dictionary<ushort, string> mapLines = new Dictionary<ushort, string>();
             ushort line_addr = 0;
 
-            // A convenient utility to convert variables into
-            // hex strings because "modern C++"'s method with 
-            // streams is atrocious
-            //var hex = [](uint n, byte d)
-            //{
-            //	std::string s(d, '0');
-            //	for (int i = d - 1; i >= 0; i--, n >>= 4)
-            //		s[i] = "0123456789ABCDEF"[n & 0xF];
-            //	return s;
-            //};
-
             // Starting at the specified address we read an instruction
             // byte, which in turn yields information from the lookup table
             // as to how many additional bytes we need to read and what the
@@ -1364,7 +1353,7 @@ namespace nes_emulator.src
 
             // As the instruction is decoded, a std::string is assembled
             // with the readable output
-            while (addr <= nStop)
+            while (addr <= (uint)nStop)
             {
                 line_addr = (ushort)addr;
 

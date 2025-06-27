@@ -18,6 +18,8 @@ namespace nes_emulator
 		bool emulationRun = false;
 		float residualTime = 0.0f;
 
+		byte nSelectedPalette = 0x00;
+
 		ImGuiController controller;
 
 		public Emulator(int width, int height, string title) : base(GameWindowSettings.Default, new NativeWindowSettings() { ClientSize = (width, height), Title = title})
@@ -31,7 +33,7 @@ namespace nes_emulator
 			nes = new Bus();
 			mapAsm = new Dictionary<ushort, string>();
 
-			cart = new Cartridge("nestest.nes");
+			cart = new Cartridge(NESConfig.NES_CARTRIDGE_FILE);
 
 			nes.InsertCartridge(ref cart);
 
@@ -74,8 +76,8 @@ namespace nes_emulator
 				else
 				{
 					residualTime += (1.0f / 60.0f) - (float)args.Time;
-					do { nes.Clock(); } while (!nes.ppu2C02.frame_complete);
-					nes.ppu2C02.frame_complete = false;
+					do { nes.Clock(); } while (!nes.ppu2C02.frameCompleted);
+					nes.ppu2C02.frameCompleted = false;
 				}
 			}
 			else
@@ -91,9 +93,9 @@ namespace nes_emulator
 				// Emulate frame by frame
 				if (KeyboardState.IsKeyPressed(Keys.F))
 				{
-					do { nes.Clock(); } while (!nes.ppu2C02.frame_complete);
+					do { nes.Clock(); } while (!nes.ppu2C02.frameCompleted);
 					do { nes.Clock(); } while (!nes.cpu6502.Complete());
-					nes.ppu2C02.frame_complete = false;
+					nes.ppu2C02.frameCompleted = false;
 				}
 			}
 			
@@ -102,6 +104,8 @@ namespace nes_emulator
 				nes.Reset();
 			if (KeyboardState.IsKeyPressed(Keys.Space))
 				emulationRun = !emulationRun;
+			if (KeyboardState.IsKeyPressed(Keys.P))
+				nSelectedPalette = (byte)((++nSelectedPalette) & 0x07);
 		}
 
 		protected override void OnRenderFrame(FrameEventArgs args)
@@ -117,7 +121,19 @@ namespace nes_emulator
 
 			ImGui.Begin("NES View");
 
-			ImGui.Image(nes.ppu2C02.textureScreenID, new Vector2(NESConfig.NES_WIDTH, NESConfig.NES_HEIGHT));
+			ImGui.Image(nes.ppu2C02.textureScreenID, new Vector2(NESConfig.NES_WIDTH * 3, NESConfig.NES_HEIGHT * 3));
+
+			ImGui.End();
+
+			ImGui.Begin("Pattern tables");
+
+			ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), "Current palette index: " + nSelectedPalette);
+
+			nes.ppu2C02.GetPatternTable(0, nSelectedPalette);
+			ImGui.Image(nes.ppu2C02.bufferPatternTableID[0], new Vector2(128 * 3, 128 * 3));
+			ImGui.SameLine();
+			nes.ppu2C02.GetPatternTable(1, nSelectedPalette);
+			ImGui.Image(nes.ppu2C02.bufferPatternTableID[1], new Vector2(128 * 3, 128 * 3));
 
 			ImGui.End();
 
@@ -130,60 +146,8 @@ namespace nes_emulator
 		{
 			List<string> sInstruction = new List<string>();
 
-			//ImGui.Begin("RAM Info");
-
-			//ushort nAddr = 0x0000;
-			//int nRows = 16;
-			//int nColumns = 16;
-
-			//for (int row = 0; row < nRows; row++)
-			//{
-			//	string sOffset = "$" + nAddr.ToString("X4") + ":";
-			//	for (int col = 0; col < nColumns; col++)
-			//	{
-			//		sOffset += " " + nes.CPURead(nAddr, true).ToString("X2");
-			//		nAddr += 1;
-			//	}
-
-			//	ImGui.Text(sOffset);
-			//}
-
-			//ImGui.Spacing();
-			//nAddr = 0x8000;
-
-			//for (int row = 0; row < nRows; row++)
-			//{
-			//	string sOffset = "$" + nAddr.ToString("X4") + ":";
-			//	for (int col = 0; col < nColumns; col++)
-			//	{
-			//		sOffset += " " + nes.CPURead(nAddr, true).ToString("X2");
-			//		nAddr += 1;
-			//	}
-
-			//	ImGui.Text(sOffset);
-			//}
-
-			//ImGui.End();
-
-			ImGui.Begin("CPU Info");
-
-			ImGui.Text("Status:");
-			// CPU Statuses
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.N) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "N");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.V) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "V");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.B) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "B");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.D) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "D");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.I) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "I");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.Z) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "Z");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.C) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "C");
-
-			ImGui.Text($"Program Counter: ${nes.cpu6502.pc.ToString("X4")}");
-			ImGui.Text($"A: ${nes.cpu6502.a.ToString("X2")} [{nes.cpu6502.a}]");
-			ImGui.Text($"X: ${nes.cpu6502.x.ToString("X2")} [{nes.cpu6502.x}]");
-			ImGui.Text($"Y: ${nes.cpu6502.y.ToString("X2")} [{nes.cpu6502.y}]");
-			ImGui.Text($"Stack P: ${nes.cpu6502.stkp.ToString("X4")}");
-
-			ImGui.End();
+			ImGuiRamDebug();
+			ImGuiCPUDebug();
 
 			ImGui.Begin("Instruction Info");
 
@@ -202,21 +166,21 @@ namespace nes_emulator
 				//ImGui.Text("Next Instructions:");
 				int yOffset = nLineY;
 				int forward = index;
-				Stack<string> nextIns = new Stack<string>();
+				Stack<string> nextInsStk = new Stack<string>();
 				while (yOffset < (26 * 10) + 72 && ++forward < it_a.Count)
 				{
 					yOffset += 10;
 					//ImGui.Text(_mapAsm[it_a[forward]]);
-					nextIns.Push(mapAsm[it_a[forward]]);
+					nextInsStk.Push(mapAsm[it_a[forward]]);
 				}
 
-				string nextIns2 = "";
-				while(nextIns.Count > 0)
+				string nextIns = "";
+				while(nextInsStk.Count > 0)
 				{
-					nextIns2 += nextIns.Pop() + "\n";
+					nextIns += nextInsStk.Pop() + "\n";
 				}
 
-				sInstruction.Add(nextIns2);
+				sInstruction.Add(nextIns);
 
 				// Draw previous instructions
 				//ImGui.Text("Previous Instructions:");
@@ -239,6 +203,66 @@ namespace nes_emulator
 			ImGui.End();
 		}
 
+		private void ImGuiRamDebug()
+		{
+			ImGui.Begin("RAM Info");
+
+			ushort nAddr = 0x0000;
+			int nRows = 16;
+			int nColumns = 16;
+
+			for (int row = 0; row < nRows; row++)
+			{
+				string sOffset = "$" + nAddr.ToString("X4") + ":";
+				for (int col = 0; col < nColumns; col++)
+				{
+					sOffset += " " + nes.CPURead(nAddr, true).ToString("X2");
+					nAddr += 1;
+				}
+
+				ImGui.Text(sOffset);
+			}
+
+			ImGui.Spacing();
+			nAddr = 0x8000;
+
+			for (int row = 0; row < nRows; row++)
+			{
+				string sOffset = "$" + nAddr.ToString("X4") + ":";
+				for (int col = 0; col < nColumns; col++)
+				{
+					sOffset += " " + nes.CPURead(nAddr, true).ToString("X2");
+					nAddr += 1;
+				}
+
+				ImGui.Text(sOffset);
+			}
+
+			ImGui.End();
+		}
+
+		private void ImGuiCPUDebug()
+		{
+			ImGui.Begin("CPU Info");
+
+			ImGui.Text("Status:");
+			// CPU Statuses
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.N) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "N");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.V) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "V");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.B) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "B");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.D) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "D");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.I) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "I");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.Z) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "Z");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.C) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "C");
+
+			ImGui.Text($"Program Counter: ${nes.cpu6502.pc.ToString("X4")}");
+			ImGui.Text($"A: ${nes.cpu6502.a.ToString("X2")} [{nes.cpu6502.a}]");
+			ImGui.Text($"X: ${nes.cpu6502.x.ToString("X2")} [{nes.cpu6502.x}]");
+			ImGui.Text($"Y: ${nes.cpu6502.y.ToString("X2")} [{nes.cpu6502.y}]");
+			ImGui.Text($"Stack P: ${nes.cpu6502.stkp.ToString("X4")}");
+
+			ImGui.End();
+		}
 		protected override void OnTextInput(TextInputEventArgs e)
 		{
 			base.OnTextInput(e);

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -15,6 +16,8 @@ namespace nes_emulator.src
 {
 	public class PPU
 	{
+		#region Structs
+
 		public struct Pixel
 		{
 			public byte r, g, b, a;
@@ -25,25 +28,232 @@ namespace nes_emulator.src
 			}
 		}
 
+		[StructLayout(LayoutKind.Explicit)]
+		public struct Status
+		{
+			[FieldOffset(0)]
+			public byte reg;
+
+			[FieldOffset(0)]
+			private byte bits;
+
+			public bool SpriteOverflow
+			{
+				get => (bits & (1 << 5)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 5)) : (byte)(bits & ~(1 << 5));
+			}
+
+			public bool SpriteZeroHit
+			{
+				get => (bits & (1 << 6)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 6)) : (byte)(bits & ~(1 << 6));
+			}
+
+			public bool VerticalBlank
+			{
+				get => (bits & (1 << 7)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 7)) : (byte)(bits & ~(1 << 7));
+			}
+		}
+
+		[StructLayout(LayoutKind.Explicit)]
+		public struct Mask
+		{
+			[FieldOffset(0)]
+			public byte reg;
+
+			[FieldOffset(0)]
+			private byte bits;
+
+			public bool Grayscale
+			{
+				get => (bits & (1 << 0)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 0)) : (byte)(bits & ~(1 << 0));
+			}
+
+			public bool RenderBackgroundLeft
+			{
+				get => (bits & (1 << 1)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 1)) : (byte)(bits & ~(1 << 1));
+			}
+
+			public bool RenderSpritesLeft
+			{
+				get => (bits & (1 << 2)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 2)) : (byte)(bits & ~(1 << 2));
+			}
+
+			public bool RenderBackground
+			{
+				get => (bits & (1 << 3)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 3)) : (byte)(bits & ~(1 << 3));
+			}
+
+			public bool RenderSprites
+			{
+				get => (bits & (1 << 4)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 4)) : (byte)(bits & ~(1 << 4));
+			}
+
+			public bool EnhanceRed
+			{
+				get => (bits & (1 << 5)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 5)) : (byte)(bits & ~(1 << 5));
+			}
+
+			public bool EnhanceGreen
+			{
+				get => (bits & (1 << 6)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 6)) : (byte)(bits & ~(1 << 6));
+			}
+
+			public bool EnhanceBlue
+			{
+				get => (bits & (1 << 7)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 7)) : (byte)(bits & ~(1 << 7));
+			}
+		}
+
+		[StructLayout(LayoutKind.Explicit)]
+		public struct Control
+		{
+			[FieldOffset(0)]
+			public byte reg;
+
+			[FieldOffset(0)]
+			private byte bits;
+
+			public bool NametableX
+			{
+				get => (bits & (1 << 0)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 0)) : (byte)(bits & ~(1 << 0));
+			}
+
+			public bool NametableY
+			{
+				get => (bits & (1 << 1)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 1)) : (byte)(bits & ~(1 << 1));
+			}
+
+			public bool IncrementMode
+			{
+				get => (bits & (1 << 2)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 2)) : (byte)(bits & ~(1 << 2));
+			}
+
+			public bool PatternSprite
+			{
+				get => (bits & (1 << 3)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 3)) : (byte)(bits & ~(1 << 3));
+			}
+
+			public bool PatternBackground
+			{
+				get => (bits & (1 << 4)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 4)) : (byte)(bits & ~(1 << 4));
+			}
+
+			public bool SpriteSize
+			{
+				get => (bits & (1 << 5)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 5)) : (byte)(bits & ~(1 << 5));
+			}
+
+			public bool SlaveMode
+			{
+				get => (bits & (1 << 6)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 6)) : (byte)(bits & ~(1 << 6));
+			}
+
+			public bool EnableNMI
+			{
+				get => (bits & (1 << 7)) != 0;
+				set => bits = value ? (byte)(bits | (1 << 7)) : (byte)(bits & ~(1 << 7));
+			}
+		}
+
+		public struct LoopyRegister
+		{
+			public ushort reg = 0x0000;
+
+			public ushort CoarseX
+			{
+				get => (ushort)(reg & 0b0000000000011111);
+				set => reg = (ushort)((reg & ~0b0000000000011111) | (value & 0b11111));
+			}
+
+			public ushort CoarseY
+			{
+				get => (ushort)((reg >> 5) & 0b00011111);
+				set => reg = (ushort)((reg & ~(0b00011111 << 5)) | ((value & 0b00011111) << 5));
+			}
+
+			public bool NametableX
+			{
+				get => (reg & (1 << 10)) != 0;
+				set => reg = value ? (ushort)(reg | (1 << 10)) : (ushort)(reg & ~(1 << 10));
+			}
+
+			public bool NametableY
+			{
+				get => (reg & (1 << 11)) != 0;
+				set => reg = value ? (ushort)(reg | (1 << 11)) : (ushort)(reg & ~(1 << 11));
+			}
+
+			public ushort FineY
+			{
+				get => (ushort)((reg >> 12) & 0b00000111);
+				set => reg = (ushort)((reg & ~(0b00000111 << 12)) | ((value & 0b00000111) << 12));
+			}
+
+			public LoopyRegister()
+			{
+
+			}
+		}
+
+		#endregion
+
+		Status statusRegister;
+		Mask maskRegister;
+		Control controlRegister;
+
+		byte addressLatch = 0x00;
+		byte ppuDataBuffer = 0x00;
+
+		LoopyRegister vramAddr;
+		LoopyRegister tramAddr;
+		byte fineX = 0x00;
+
+		// Background Bytes
+		byte bgNextTileId = 0x00;
+		byte bgNextTileAttrib = 0x00;
+		byte bgNextTileLSB = 0x00;
+		byte bgNextTileMSB = 0x00;
+
+		// Shifters
+		ushort bgShifterPatternLO = 0x0000;
+		ushort bgShifterPatternHI = 0x0000;
+		ushort bgShifterAttribLO = 0x0000;
+		ushort bgShifterAttribHI = 0x0000;
 
 		private Cartridge cartridge;
-		private byte[,] tblName = new byte[2, 1024];
-		private byte[] tblPalette = new byte[32];
-		//private byte[,] tblPattern = new byte[2, 4096]; 
+		public byte[,] tblName = new byte[2, 1024];
+		public byte[] tblPalette = new byte[32];
+		public byte[,] tblPattern = new byte[2, 4096];
 
-		public bool frame_complete = false;
+		public bool frameCompleted = false;
 
 		private short scanline = 0;
 		private short cycle = 0;
+		public bool nmi;
 
 		private Pixel[] palleteScreen = new Pixel[0x40];
 
-		private int bufferNameTableID1 = 0;
-		private int bufferNameTableID2 = 1;
+		public int[] bufferNameTableID = new int[2];
 		private Pixel[][] bufferNameTable = new Pixel[2][];
 
-		private int bufferPatternTableID1 = 0;
-		private int bufferPatternTableID2 = 1;
+		public int[] bufferPatternTableID = new int[2];
 		private Pixel[][] bufferPatternTable = new Pixel[2][];
 
 		// Rendering stuff
@@ -54,16 +264,22 @@ namespace nes_emulator.src
 		{
 			InitializePalette();
 
+			bufferNameTable[0] = new Pixel[256 * 240];
+			bufferNameTable[1] = new Pixel[256 * 240];
+
+			bufferPatternTable[0] = new Pixel[128 * 128];
+			bufferPatternTable[1] = new Pixel[128 * 128];
+
 			// Create the texture showing the NES contents that will be display
 			CreateTexture(ref textureScreenID, NESConfig.NES_WIDTH, NESConfig.NES_HEIGHT, out bufferScreen);
 
 			//
-			CreateTexture(ref bufferNameTableID1, 256, 240, out bufferNameTable[bufferNameTableID1]);
-			CreateTexture(ref bufferNameTableID2, 256, 240, out bufferNameTable[bufferNameTableID2]);
+			CreateTexture(ref bufferNameTableID[0], 256, 240, out bufferNameTable[bufferNameTableID[0]]);
+			CreateTexture(ref bufferNameTableID[1], 256, 240, out bufferNameTable[bufferNameTableID[1]]);
 
-			//
-			CreateTexture(ref bufferPatternTableID1, 128, 128, out bufferPatternTable[bufferPatternTableID1]);
-			CreateTexture(ref bufferPatternTableID2, 128, 128, out bufferPatternTable[bufferPatternTableID2]);
+			//	
+			CreateTexture(ref bufferPatternTableID[0], 128, 128, out bufferPatternTable[bufferPatternTableID[0]]);
+			CreateTexture(ref bufferPatternTableID[1], 128, 128, out bufferPatternTable[bufferPatternTableID[1]]);
 		}
 
 		private void InitializePalette()
@@ -149,28 +365,87 @@ namespace nes_emulator.src
 			GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
 		}
 
+		private void UploadBuffer(int textureID, Pixel[] buffer, int width, int height)
+		{
+			GL.BindTexture(TextureTarget.Texture2D, textureID);
+			unsafe
+			{
+				fixed (Pixel* ptr = buffer)
+				{
+					GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, width, height,
+						PixelFormat.Rgba, PixelType.UnsignedByte, (IntPtr)ptr);
+				}
+			}
+		}
+
+		ref Pixel GetColourFromPaletteRam(byte palette, byte pixel)
+		{
+			return ref palleteScreen[PPURead((ushort)((0x3F00 + (palette << 2) + pixel))) & 0x3F];
+		}
+
+		#region Read and Write Stuff
+
 		public byte CPURead(ushort addr, bool readOnly = false)
 		{
 			byte data = 0x00;
 
-			switch (addr)
+			if (readOnly)
 			{
-				case 0x0000: // Control
-					break;
-				case 0x0001: // Mask
-					break;
-				case 0x0002: // Status
-					break;
-				case 0x0003: // OAM Address
-					break;
-				case 0x0004: // OAM Data
-					break;
-				case 0x0005: // Scroll
-					break;
-				case 0x0006: // PPU Address
-					break;
-				case 0x0007: // PPU Data
-					break;
+				switch (addr)
+				{
+					case 0x0000: // Control
+						data = controlRegister.reg;
+						break;
+					case 0x0001: // Mask
+						data = maskRegister.reg;
+						break;
+					case 0x0002: // Status
+						data = statusRegister.reg;
+						break;
+					case 0x0003: // OAM Address
+						break;
+					case 0x0004: // OAM Data
+						break;
+					case 0x0005: // Scroll
+						break;
+					case 0x0006: // PPU Address
+						break;
+					case 0x0007: // PPU Data
+						break;
+				}
+			}
+			else
+			{
+				switch (addr)
+				{
+					case 0x0000: // Control
+						data = controlRegister.reg;
+						break;
+					case 0x0001: // Mask
+						data = maskRegister.reg;
+						break;
+					case 0x0002: // Status
+						data = (byte)((statusRegister.reg & 0xE0) | (ppuDataBuffer & 0x1F));
+						statusRegister.VerticalBlank = false;
+						addressLatch = 0;
+						break;
+					case 0x0003: // OAM Address
+						break;
+					case 0x0004: // OAM Data
+						break;
+					case 0x0005: // Scroll
+						break;
+					case 0x0006: // PPU Address
+						break;
+					case 0x0007: // PPU Data
+						data = ppuDataBuffer;
+						ppuDataBuffer = PPURead(vramAddr.reg);
+
+						if (vramAddr.reg >= 0x3F00) data = ppuDataBuffer;
+
+						vramAddr.reg += (ushort)(controlRegister.IncrementMode ? 32 : 1);
+						break;
+				}
 			}
 
 			return data;
@@ -181,8 +456,12 @@ namespace nes_emulator.src
 			switch (addr)
 			{
 				case 0x0000: // Control
+					controlRegister.reg = data;
+					tramAddr.NametableX = controlRegister.NametableX;
+					tramAddr.NametableY = controlRegister.NametableY;
 					break;
 				case 0x0001: // Mask
+					maskRegister.reg = data;
 					break;
 				case 0x0002: // Status
 					break;
@@ -191,10 +470,35 @@ namespace nes_emulator.src
 				case 0x0004: // OAM Data
 					break;
 				case 0x0005: // Scroll
+					if(addressLatch == 0)
+					{
+						fineX = (byte)(data & 0x07);
+						tramAddr.CoarseX = (byte)(data >> 3);
+						addressLatch = 1;
+					}
+					else
+					{
+						tramAddr.FineY = (byte)(data & 0x07);
+						tramAddr.CoarseY = (byte)(data >> 3);
+						addressLatch = 0;
+					}
 					break;
 				case 0x0006: // PPU Address
+					if (addressLatch == 0)
+					{
+						tramAddr.reg = (ushort)((tramAddr.reg & 0xFF00) | (data << 8));
+						addressLatch = 1;
+					}
+					else
+					{
+						tramAddr.reg = (ushort)((tramAddr.reg & 0xFF00) | data);
+						vramAddr = tramAddr;
+						addressLatch = 0;
+					}
 					break;
 				case 0x0007: // PPU Data
+					PPUWrite(vramAddr.reg, data);
+					vramAddr.reg += (ushort)(controlRegister.IncrementMode ? 32 : 1);
 					break;
 			}
 		}
@@ -206,8 +510,55 @@ namespace nes_emulator.src
 
 			if(cartridge.PPURead(addr, ref data))
 			{
-
+				
 			}
+			else if(addr >= 0x0000 && addr <= 0x1FFF)
+			{
+				// If the cartridge cant map the address, have
+				// a physical location ready here
+				data = tblPattern[((addr & 0x1000) >> 12), addr & 0x0FFF];
+			}
+			else if(addr >= 0x2000 && addr <= 0x3EFF)
+			{
+				addr &= 0x0FFF;
+
+				if (cartridge.mirror == Cartridge.MIRROR.VERTICAL)
+				{
+					// Vertical
+					if (addr >= 0x0000 && addr <= 0x03FF)
+						data = tblName[0, addr & 0x03FF];
+					if (addr >= 0x0400 && addr <= 0x07FF)
+						data = tblName[1, addr & 0x03FF];
+					if (addr >= 0x0800 && addr <= 0x0BFF)
+						data = tblName[0, addr & 0x03FF];
+					if (addr >= 0x0C00 && addr <= 0x0FFF)
+						data = tblName[1, addr & 0x03FF];
+				}
+				else if(cartridge.mirror == Cartridge.MIRROR.HORIZONTAL)
+				{
+					// Horizontal
+					if (addr >= 0x0000 && addr <= 0x03FF)
+						data = tblName[0, addr & 0x03FF];
+					if (addr >= 0x0400 && addr <= 0x07FF)
+						data = tblName[0, addr & 0x03FF];
+					if (addr >= 0x0800 && addr <= 0x0BFF)
+						data = tblName[1, addr & 0x03FF];
+					if (addr >= 0x0C00 && addr <= 0x0FFF)
+						data = tblName[1, addr & 0x03FF];
+				}
+			}
+			else if(addr >= 0x3F00 && addr <= 0x3FFF)
+			{
+				addr &= 0x001F;
+
+				if (addr == 0x0010) addr = 0x0000;
+				if (addr == 0x0014) addr = 0x0004;
+				if (addr == 0x0018) addr = 0x0008;
+				if (addr == 0x001C) addr = 0x000C;
+
+				data = Convert.ToByte(tblPalette[addr] & (maskRegister.Grayscale ? 0x30 : 0x3F));
+			}
+
 
 			return data;
 		}
@@ -220,7 +571,53 @@ namespace nes_emulator.src
 			{
 
 			}
+			else if (addr >= 0x0000 && addr <= 0x1FFF)
+			{
+				tblPattern[((addr & 0x1000) >> 12), addr & 0x0FFF] = data;
+			}
+			else if (addr >= 0x2000 && addr <= 0x3EFF)
+			{
+				addr &= 0x0FFF;
+
+				if (cartridge.mirror == Cartridge.MIRROR.VERTICAL)
+				{
+					// Vertical
+					if (addr >= 0x0000 && addr <= 0x03FF)
+						tblName[0, addr & 0x03FF] = data;
+					if (addr >= 0x0400 && addr <= 0x07FF)
+						tblName[1, addr & 0x03FF] = data;
+					if (addr >= 0x0800 && addr <= 0x0BFF)
+						tblName[0, addr & 0x03FF] = data;
+					if (addr >= 0x0C00 && addr <= 0x0FFF)
+						tblName[1, addr & 0x03FF] = data;
+				}
+				else if (cartridge.mirror == Cartridge.MIRROR.HORIZONTAL)
+				{
+					// Horizontal
+					if (addr >= 0x0000 && addr <= 0x03FF)
+						tblName[0, addr & 0x03FF] = data;
+					if (addr >= 0x0400 && addr <= 0x07FF)
+						tblName[0, addr & 0x03FF] = data;
+					if (addr >= 0x0800 && addr <= 0x0BFF)
+						tblName[1, addr & 0x03FF] = data;
+					if (addr >= 0x0C00 && addr <= 0x0FFF)
+						tblName[1, addr & 0x03FF] = data;
+				}
+			}
+			else if (addr >= 0x3F00 && addr <= 0x3FFF)
+			{
+				addr &= 0x001F;
+
+				if (addr == 0x0010) addr = 0x0000;
+				if (addr == 0x0014) addr = 0x0004;
+				if (addr == 0x0018) addr = 0x0008;
+				if (addr == 0x001C) addr = 0x000C;
+
+				tblPalette[addr] = data;
+			}
 		}
+
+		#endregion
 
 		#region Interface
 
@@ -229,13 +626,230 @@ namespace nes_emulator.src
 			this.cartridge = _cartridge;
 		}
 
+		public void Reset()
+		{
+			fineX = 0x00;
+			addressLatch = 0x00;
+			ppuDataBuffer = 0x00;
+			scanline = 0;
+			cycle = 0;
+			bgNextTileId = 0x00;
+			bgNextTileAttrib = 0x00;
+			bgNextTileLSB = 0x00;
+			bgNextTileMSB = 0x00;
+			bgShifterPatternLO = 0x0000;
+			bgShifterPatternHI = 0x0000;
+			bgShifterAttribLO = 0x0000;
+			bgShifterAttribHI = 0x0000;
+			statusRegister.reg = 0x00;
+			maskRegister.reg = 0x00;
+			controlRegister.reg = 0x00;
+			vramAddr.reg = 0x0000;
+			tramAddr.reg = 0x0000;
+		}
+
 		public void Clock()
 		{
+			var IncrementScrollX = () =>
+			{
+				if(maskRegister.RenderBackground || maskRegister.RenderSprites)
+				{
+					if(vramAddr.CoarseX == 31)
+					{
+						vramAddr.CoarseX = 0;
+						//vramAddr.NametableX = Convert.ToBoolean(~Convert.ToByte(vramAddr.NametableX));
+						vramAddr.NametableX = !vramAddr.NametableX;
+					}
+					else
+					{
+						vramAddr.CoarseX++;
+					}
+				}
+			};
+
+			var IncrementScrollY = () =>
+			{
+				if (maskRegister.RenderBackground || maskRegister.RenderSprites)
+				{
+					if (vramAddr.FineY < 7)
+					{
+						vramAddr.FineY++;
+					}
+					else
+					{
+						vramAddr.FineY = 0;
+
+						if (vramAddr.CoarseY == 29)
+						{
+							vramAddr.CoarseY = 0;
+
+							//vramAddr.NametableY = Convert.ToBoolean(~Convert.ToByte(vramAddr.NametableY));
+							vramAddr.NametableY = !vramAddr.NametableY;
+						}
+						else if (vramAddr.CoarseY == 31)
+						{
+							vramAddr.CoarseY = 0;
+						}
+						else
+						{
+							vramAddr.CoarseY++;
+						}
+					}
+				}
+			};
+
+			var TransferAddressX = () =>
+			{
+				// Only if rendering is enable
+				if(maskRegister.RenderBackground || maskRegister.RenderSprites)
+				{
+					vramAddr.NametableX = tramAddr.NametableX;
+					vramAddr.CoarseX = tramAddr.CoarseX;
+				}
+			};
+
+			var TransferAddressY = () =>
+			{
+				if(maskRegister.RenderBackground || maskRegister.RenderSprites)
+				{
+					vramAddr.FineY = tramAddr.FineY;
+					vramAddr.NametableY = tramAddr.NametableY;
+					vramAddr.CoarseY = tramAddr.CoarseY;
+				}
+			};
+
+			var LoadBackgroundShifters = () =>
+			{
+				bgShifterPatternLO = (ushort)((bgShifterPatternLO & 0xFF00) | bgNextTileLSB);
+				bgShifterPatternHI = (ushort)((bgShifterPatternHI & 0xFF00) | bgNextTileMSB);
+
+				bgShifterAttribLO = (ushort)((bgShifterAttribLO & 0xFF00) | (((bgNextTileAttrib & 0b01) != 0) ? 0xFF : 0x00));
+				bgShifterAttribHI = (ushort)((bgShifterAttribHI & 0xFF00) | (((bgNextTileAttrib & 0b10) != 0) ? 0xFF : 0x00));
+			};
+
+			var UpdateShifters = () =>
+			{
+				if(maskRegister.RenderBackground)
+				{
+					bgShifterPatternLO <<= 1;
+					bgShifterPatternHI <<= 1;
+
+					bgShifterAttribLO <<= 1;
+					bgShifterAttribHI <<= 1;
+				}
+			};
+
+			if(scanline >= -1 && scanline < 240)
+			{
+				if(scanline == 0 && cycle == 0)
+				{
+					// "Old frame" cycle skip
+					cycle = 1;
+				}
+
+				if (scanline == -1 && cycle == 1)
+				{
+					statusRegister.VerticalBlank = false;
+				}
+
+				if((cycle >= 2 && cycle < 258) || (cycle >= 321 && cycle < 338))
+				{
+					UpdateShifters();
+
+					switch ((cycle - 1) % 8)
+					{
+						case 0:
+							LoadBackgroundShifters();
+							bgNextTileId = PPURead((ushort)(0x2000 | (vramAddr.reg & 0x0FFF)));
+							break;
+						case 2:
+							bgNextTileAttrib = PPURead((ushort)(0x23C0 | (Convert.ToByte(vramAddr.NametableY) << 11)
+								| (Convert.ToByte(vramAddr.NametableX) << 10)
+								| ((vramAddr.CoarseY >> 2) << 3)
+								| (vramAddr.CoarseX >> 2)));
+							if ((Convert.ToByte(vramAddr.CoarseY) & 0x02) != 0) bgNextTileAttrib >>= 4;
+							if ((Convert.ToByte(vramAddr.CoarseX) & 0x02) != 0) bgNextTileAttrib >>= 2;
+							bgNextTileAttrib &= 0x03;
+							break;
+						case 4:
+							bgNextTileLSB = PPURead((ushort)((Convert.ToByte(controlRegister.PatternBackground) << 12)
+								+ ((ushort)bgNextTileId << 4)
+								+ (vramAddr.FineY) + 0));
+							break;
+						case 6:
+							bgNextTileMSB = PPURead((ushort)((Convert.ToByte(controlRegister.PatternBackground) << 12)
+								+ ((ushort)bgNextTileId << 4)
+								+ (vramAddr.FineY) + 8));
+							break;
+						case 7:
+							IncrementScrollX();
+							break;
+					}
+				}
+
+				if (cycle == 256)
+				{
+					IncrementScrollY();
+				}
+
+				if(cycle == 257)
+				{
+					LoadBackgroundShifters();
+					TransferAddressX();
+				}
+
+				if(cycle == 338 || cycle == 340)
+				{
+					bgNextTileId = PPURead((ushort)(0x2000 | (vramAddr.reg & 0x0FFF)));
+				}
+
+				if(scanline == -1 && cycle >= 280 && cycle < 305)
+				{
+					TransferAddressY();
+				}
+			}
+
+			if(scanline == 240)
+			{
+				// Post Render Scanline - Do Nothing!
+			}
+
+			if (scanline == 241 && cycle == 1)
+			{
+				statusRegister.VerticalBlank = true;
+				if (controlRegister.EnableNMI)
+					nmi = true;
+			}
+
+
+			// Draw
+			byte _bgPixel = 0x00;
+			byte _bgPalette = 0x00;
+			if(maskRegister.RenderBackground)
+			{
+				ushort _bitMUX = (ushort)(0x8000 >> fineX);
+
+				byte _p0Pixel = Convert.ToByte((bgShifterPatternLO & _bitMUX) > 0);
+				byte _p1Pixel = Convert.ToByte((bgShifterPatternHI & _bitMUX) > 0);
+
+				_bgPixel = (byte)((_p1Pixel << 1) | _p0Pixel);
+
+				byte _bg0Palette = Convert.ToByte((bgShifterAttribLO & _bitMUX) > 0);
+				byte _bg1Palette = Convert.ToByte((bgShifterAttribHI & _bitMUX) > 0);
+
+				_bgPalette = (byte)((_bg1Palette << 1) | _bg0Palette);
+
+			}
+
+
 			int x = cycle;
 			int y = scanline;
 			if (x >= 0 && x < NESConfig.NES_WIDTH && y >= 0 && y < NESConfig.NES_HEIGHT)
 			{
-				bufferScreen[y * NESConfig.NES_WIDTH + x] = palleteScreen[(Random.Shared.Next(2) == 1) ? 0x3F : 0x30];
+				bufferScreen[y * NESConfig.NES_WIDTH + x] = GetColourFromPaletteRam(_bgPalette, _bgPixel);
+
+				// Rendering noise
+				//bufferScreen[y * NESConfig.NES_WIDTH + x] = palleteScreen[(Random.Shared.Next(2) == 1) ? 0x3F : 0x30];
 			}
 
 			cycle++;
@@ -247,23 +861,9 @@ namespace nes_emulator.src
 				if(scanline >=261)
 				{
 					scanline = -1;
-					frame_complete = true;
+					frameCompleted = true;
 
 					UploadBuffer(textureScreenID, bufferScreen, NESConfig.NES_WIDTH, NESConfig.NES_HEIGHT);
-				}
-			}
-		}
-
-		//
-		private void UploadBuffer(int textureID, Pixel[] buffer, int width, int height)
-		{
-			GL.BindTexture(TextureTarget.Texture2D, textureID);
-			unsafe
-			{
-				fixed (Pixel* ptr = buffer)
-				{
-					GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, width, height,
-						PixelFormat.Rgba, PixelType.UnsignedByte, (IntPtr)ptr);
 				}
 			}
 		}
@@ -282,8 +882,36 @@ namespace nes_emulator.src
 			return ref bufferNameTable[i];
 		}
 
-		public ref Pixel[] GetPatternTable(byte i)
+		public ref Pixel[] GetPatternTable(byte i, byte palette)
 		{
+			for(ushort nTileY = 0; nTileY < 16; nTileY++)
+			{
+				for(ushort nTileX = 0; nTileX < 16; nTileX++)
+				{
+					ushort nOffset = (ushort)(nTileY * 256 + nTileX * 16);
+
+					for(ushort row = 0; row < 8; row++)
+					{
+						byte tile_lsb = PPURead((ushort)(i * 0x1000 + nOffset + row + 0x0000));
+						byte tile_msb = PPURead((ushort)(i * 0x1000 + nOffset + row + 0x0008));
+
+						for(ushort col = 0; col < 8; col++)
+						{
+							byte pixel = (byte)((tile_lsb & 0x01) + (tile_msb & 0x01));
+							tile_lsb >>= 1; tile_msb >>= 1;
+
+							int x = nTileX * 8 + (7 - col);
+							int y = nTileY * 8 + row;
+
+							Pixel colourOfBuffer = GetColourFromPaletteRam(palette, pixel);
+
+							bufferPatternTable[i][y * 128 + x] = colourOfBuffer;
+						}
+					}
+				}
+			}
+
+			UploadBuffer(bufferPatternTableID[i], bufferPatternTable[i], 128, 128);
 			return ref bufferPatternTable[i];
 		}
 

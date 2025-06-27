@@ -12,6 +12,8 @@ namespace nes_emulator.src
 {
 	public class Cartridge
 	{
+		#region Structs and Enums
+
 		// iNES Format header
 		[StructLayout(LayoutKind.Sequential, Pack = 1)]
 		struct NESHeader
@@ -29,18 +31,34 @@ namespace nes_emulator.src
 			public char[] unused;
 		}
 
+		public enum MIRROR
+		{
+			HORIZONTAL,
+			VERTICAL,
+			ONESCREEN_LO,
+			ONESCREEN_HI,
+		}
+
+		#endregion
+
 		private List<byte> vPRGMemory;
-		private List<byte> vCHRMemory = new List<byte>();
+		private List<byte> vCHRMemory;
 
 		private byte nMapperID = 0;
 		private byte nPRGBanks = 0;
 		private byte nCHRBanks = 0;
 
+		public MIRROR mirror = MIRROR.HORIZONTAL;
+
 		private Mapper mapper;
+
+		private bool imageValid;
 
 		public Cartridge(string filename)
 		{
 			NESHeader header;
+
+			imageValid = false;
 
 			if (File.Exists(filename))
 			{
@@ -53,6 +71,7 @@ namespace nes_emulator.src
 
 					GCHandle handle = GCHandle.Alloc(headerBytes, GCHandleType.Pinned);
 					header = (NESHeader)Marshal.PtrToStructure(handle.AddrOfPinnedObject(), typeof(NESHeader));
+
 					handle.Free();
 
 					// The next 512 byte is for training which is unnecessary
@@ -61,6 +80,7 @@ namespace nes_emulator.src
 
 					// Determine the mapper ID
 					nMapperID = (byte)(((header.mapper2 >> 4) << 4) | (header.mapper1 >> 4));
+					mirror = (header.mapper1 & 0x01) != 0 ? MIRROR.VERTICAL : MIRROR.HORIZONTAL;
 
 					// "Discover" File Format
 					byte nFileType = 1;
@@ -74,11 +94,14 @@ namespace nes_emulator.src
 					{
 						nPRGBanks = header.prg_rom_chunks;
 						vPRGMemory = new List<byte>(nPRGBanks * 16384);
-						vPRGMemory = reader.ReadBytes(nPRGBanks * 16384).ToList();
+						vPRGMemory = reader.ReadBytes(vPRGMemory.Capacity).ToList();
 
 						nCHRBanks = header.chr_rom_chunks;
-						vCHRMemory = new List<byte>(nCHRBanks * 8192);
-						vCHRMemory = reader.ReadBytes(nCHRBanks * 8192).ToList();
+						if(nCHRBanks == 0)
+							vCHRMemory = new List<byte>(8192);
+						else
+							vCHRMemory = new List<byte>(nCHRBanks * 8192);
+						vCHRMemory = reader.ReadBytes(vCHRMemory.Capacity).ToList();
 					}
 
 					if(nFileType == 2)
@@ -93,7 +116,14 @@ namespace nes_emulator.src
 							mapper = new Mapper000(nPRGBanks, nCHRBanks);
 							break;
 					}
+
+					imageValid = true;
+					Console.WriteLine("Cartridge load successfully!");
 				}
+			}
+			else
+			{
+                Console.WriteLine("Cartridge not found!");
 			}
 		}
 
@@ -114,7 +144,7 @@ namespace nes_emulator.src
 		{
 			uint mapped_addr = 0;
 
-			if (mapper.CPUMapWrite(addr, ref mapped_addr))
+			if (mapper.CPUMapWrite(addr, ref mapped_addr, data))
 			{
 				vPRGMemory[(int)mapped_addr] = data;
 				return true;
