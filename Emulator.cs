@@ -69,6 +69,8 @@ namespace nes_emulator
 				Close();
 			}
 
+			ControllerUpdate();
+
 			if(emulationRun)
 			{
 				if (residualTime > 0.0f)
@@ -98,8 +100,9 @@ namespace nes_emulator
 					nes.ppu2C02.frameCompleted = false;
 				}
 			}
-			
 
+			if (KeyboardState.IsKeyDown(Keys.L))
+				base.WindowState = base.WindowState == WindowState.Normal ? WindowState.Fullscreen : WindowState.Normal;
 			if(KeyboardState.IsKeyPressed(Keys.R))
 				nes.Reset();
 			if (KeyboardState.IsKeyPressed(Keys.Space))
@@ -142,65 +145,25 @@ namespace nes_emulator
 			SwapBuffers();
 		}
 
+		private void ControllerUpdate()
+		{
+			nes.controller[0] = 0x00;
+			nes.controller[0] |= KeyboardState.IsKeyDown(Keys.X) ? (byte)0x80 : (byte)0x00; // A Button
+			nes.controller[0] |= KeyboardState.IsKeyDown(Keys.Z) ? (byte)0x40 : (byte)0x00; // B Button
+			nes.controller[0] |= KeyboardState.IsKeyDown(Keys.A) ? (byte)0x20 : (byte)0x00; // Select
+			nes.controller[0] |= KeyboardState.IsKeyDown(Keys.S) ? (byte)0x10 : (byte)0x00; // Start
+			nes.controller[0] |= KeyboardState.IsKeyDown(Keys.Up) ? (byte)0x08 : (byte)0x00;
+			nes.controller[0] |= KeyboardState.IsKeyDown(Keys.Down) ? (byte)0x04 : (byte)0x00;
+			nes.controller[0] |= KeyboardState.IsKeyDown(Keys.Left) ? (byte)0x02 : (byte)0x00;
+			nes.controller[0] |= KeyboardState.IsKeyDown(Keys.Right) ? (byte)0x01 : (byte)0x00;
+		}
+
 		private void ImGuiDebug()
 		{
-			List<string> sInstruction = new List<string>();
-
 			ImGuiRamDebug();
 			ImGuiCPUDebug();
-
-			ImGui.Begin("Instruction Info");
-
-			if (mapAsm.TryGetValue(nes.cpu6502.pc, out var currentLine))
-			{
-				var it_a = mapAsm.Keys.OrderBy(k => k).ToList();
-				int index = it_a.IndexOf(nes.cpu6502.pc);
-
-				int nLineY = (26 >> 1) * 10 + 72;
-
-				// Indicate the execution line
-				//ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), currentLine + " [EXECUTING] ");
-				sInstruction.Add(currentLine + " [EXECUTING] ");
-
-				// Draw next instructions
-				//ImGui.Text("Next Instructions:");
-				int yOffset = nLineY;
-				int forward = index;
-				Stack<string> nextInsStk = new Stack<string>();
-				while (yOffset < (26 * 10) + 72 && ++forward < it_a.Count)
-				{
-					yOffset += 10;
-					//ImGui.Text(_mapAsm[it_a[forward]]);
-					nextInsStk.Push(mapAsm[it_a[forward]]);
-				}
-
-				string nextIns = "";
-				while(nextInsStk.Count > 0)
-				{
-					nextIns += nextInsStk.Pop() + "\n";
-				}
-
-				sInstruction.Add(nextIns);
-
-				// Draw previous instructions
-				//ImGui.Text("Previous Instructions:");
-				yOffset = nLineY;
-				int backward = index;
-				string prevIns = "";
-				while (yOffset > 72 && --backward >= 0)
-				{
-					yOffset -= 10;
-					//ImGui.Text(_mapAsm[it_a[backward]]);
-					prevIns += mapAsm[it_a[backward]] + "\n";
-				}
-				sInstruction.Insert(0, prevIns);
-			}
-
-			ImGui.Text(sInstruction.Count >= 3 ? sInstruction[2] : "There isn't any next instructions");
-			ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), sInstruction.Count >= 2 ? sInstruction[1] : "No current instruction to execute");
-			ImGui.Text(sInstruction.Count > 0 ? sInstruction[0] : "There isn't any history of previous instructions");
-
-			ImGui.End();
+			ImGuiInstructsDebug();
+			ImGuiSpriteDebug();
 		}
 
 		private void ImGuiRamDebug()
@@ -263,6 +226,81 @@ namespace nes_emulator
 
 			ImGui.End();
 		}
+
+		private void ImGuiInstructsDebug()
+		{
+			List<string> sInstruction = new List<string>();
+
+			ImGui.Begin("Instruction Info");
+
+			if (mapAsm.TryGetValue(nes.cpu6502.pc, out var currentLine))
+			{
+				var it_a = mapAsm.Keys.OrderBy(k => k).ToList();
+				int index = it_a.IndexOf(nes.cpu6502.pc);
+
+				int nLineY = (26 >> 1) * 10 + 72;
+
+				// Indicate the execution line
+				//ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), currentLine + " [EXECUTING] ");
+				sInstruction.Add(currentLine + " [EXECUTING] ");
+
+				// Draw next instructions
+				//ImGui.Text("Next Instructions:");
+				int yOffset = nLineY;
+				int forward = index;
+				Stack<string> nextInsStk = new Stack<string>();
+				while (yOffset < (26 * 10) + 72 && ++forward < it_a.Count)
+				{
+					yOffset += 10;
+					//ImGui.Text(_mapAsm[it_a[forward]]);
+					nextInsStk.Push(mapAsm[it_a[forward]]);
+				}
+
+				string nextIns = "";
+				while (nextInsStk.Count > 0)
+				{
+					nextIns += nextInsStk.Pop() + "\n";
+				}
+
+				sInstruction.Add(nextIns);
+
+				// Draw previous instructions
+				//ImGui.Text("Previous Instructions:");
+				yOffset = nLineY;
+				int backward = index;
+				string prevIns = "";
+				while (yOffset > 72 && --backward >= 0)
+				{
+					yOffset -= 10;
+					//ImGui.Text(_mapAsm[it_a[backward]]);
+					prevIns += mapAsm[it_a[backward]] + "\n";
+				}
+				sInstruction.Insert(0, prevIns);
+			}
+
+			ImGui.Text(sInstruction.Count >= 3 ? sInstruction[2] : "There isn't any next instructions");
+			ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), sInstruction.Count >= 2 ? sInstruction[1] : "No current instruction to execute");
+			ImGui.Text(sInstruction.Count > 0 ? sInstruction[0] : "There isn't any history of previous instructions");
+
+			ImGui.End();
+		}
+
+		private unsafe void ImGuiSpriteDebug()
+		{
+			ImGui.Begin("Sprite Info");
+
+			for (int i = 0; i < 26; i++)
+			{
+				string s = i.ToString("X2") + ": (" + nes.ppu2C02.GetOAMPointer()[i * 4 + 3].ToString()
+					+ ", " + nes.ppu2C02.GetOAMPointer()[i*4+0].ToString() + ") "
+					+ "ID: " + nes.ppu2C02.GetOAMPointer()[i*4+1].ToString("X2")
+					+ " AT: " + nes.ppu2C02.GetOAMPointer()[i*4+2].ToString("X2");
+				ImGui.Text(s);
+			}
+
+			ImGui.End();
+		}
+
 		protected override void OnTextInput(TextInputEventArgs e)
 		{
 			base.OnTextInput(e);

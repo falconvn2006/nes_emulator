@@ -15,11 +15,17 @@ namespace nes_emulator.src.Mappers
         {
             nPRGBanks = prgBanks;
             nCHRBanks = chrBanks;
+
+            Reset();
         }
 
         public abstract bool CPUMapRead(ushort addr, ref uint mapped_addr);
         public abstract bool CPUMapWrite(ushort addr, ref uint mapped_addr, byte data);
         public abstract bool PPUMapRead(ushort addr, ref uint mapped_addr);
         public abstract bool PPUMapWrite(ushort addr, ref uint mapped_addr);
+        public virtual void Reset()
+        {
+
+        }
     }
 }

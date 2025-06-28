@@ -41,16 +41,16 @@ namespace nes_emulator.src
 
 		#endregion
 
-		private List<byte> vPRGMemory;
-		private List<byte> vCHRMemory;
-
 		private byte nMapperID = 0;
 		private byte nPRGBanks = 0;
 		private byte nCHRBanks = 0;
 
-		public MIRROR mirror = MIRROR.HORIZONTAL;
+		private List<byte> vPRGMemory;
+		private List<byte> vCHRMemory;
 
 		private Mapper mapper;
+
+		public MIRROR mirror = MIRROR.HORIZONTAL;
 
 		private bool imageValid;
 
@@ -133,7 +133,7 @@ namespace nes_emulator.src
 
 			if(mapper.CPUMapRead(addr, ref mapped_addr))
 			{
-				data = vPRGMemory[(int)mapped_addr];
+				data = vPRGMemory[Convert.ToInt32(mapped_addr)];
 				return true;
 			}
 			else
@@ -146,7 +146,7 @@ namespace nes_emulator.src
 
 			if (mapper.CPUMapWrite(addr, ref mapped_addr, data))
 			{
-				vPRGMemory[(int)mapped_addr] = data;
+				vPRGMemory[Convert.ToInt32(mapped_addr)] = data;
 				return true;
 			}
 			else
@@ -159,7 +159,7 @@ namespace nes_emulator.src
 
 			if (mapper.PPUMapRead(addr, ref mapped_addr))
 			{
-				data = vCHRMemory[(int)mapped_addr];
+				data = vCHRMemory[Convert.ToInt32(mapped_addr)];
 				return true;
 			}
 			else
@@ -172,11 +172,19 @@ namespace nes_emulator.src
 
 			if (mapper.PPUMapWrite(addr, ref mapped_addr))
 			{
-				vCHRMemory[(int)mapped_addr] = data;
+				vCHRMemory[Convert.ToInt32(mapped_addr)] = data;
 				return true;
 			}
 			else
 				return false;
+		}
+
+		public void Reset()
+		{
+			// Note: This does not reset the ROM contents,
+			// but does reset the mapper.
+			if (mapper != null)
+				mapper.Reset();
 		}
 	}
 }

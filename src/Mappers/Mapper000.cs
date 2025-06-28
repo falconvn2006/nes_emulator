@@ -69,5 +69,10 @@ namespace nes_emulator.src.Mappers
 
 			return false;
 		}
+
+		public override void Reset()
+		{
+			base.Reset();
+		}
 	}
 }

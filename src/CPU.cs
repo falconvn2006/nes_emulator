@@ -53,7 +53,6 @@ namespace nes_emulator.src
         private ushort temp = 0x0000;
         private byte fetched = 0x00;
         private byte cycles = 0;
-        private uint clock_count = 0;
 
         Bus bus;
 
@@ -92,7 +91,7 @@ namespace nes_emulator.src
 
         public void ConnectBus(Bus _bus)
         {
-            bus = _bus;
+            this.bus = _bus;
         }
 
         private void Write(ushort addr, byte data)
@@ -100,7 +99,7 @@ namespace nes_emulator.src
             bus.CPUWrite(addr, data);
         }
 
-        private ushort Read(ushort addr)
+        private byte Read(ushort addr)
         {
             return bus.CPURead(addr, false);
         }
@@ -206,7 +205,7 @@ namespace nes_emulator.src
         {
             addr_rel = Read(pc);
             pc++;
-            if (Convert.ToBoolean(addr_rel & 0x80))
+            if ((addr_rel & 0x80) != 0)
                 addr_rel |= 0xFF00;
             return 0;
         }
@@ -221,7 +220,7 @@ namespace nes_emulator.src
             ushort hi = Read(pc);
             pc++;
 
-            addr_abs = (ushort)(hi << 8 | lo);
+            addr_abs = (ushort)((hi << 8) | lo);
 
             return 0;
         }
@@ -238,7 +237,7 @@ namespace nes_emulator.src
             ushort hi = Read(pc);
             pc++;
 
-            addr_abs = (ushort)(hi << 8 | lo);
+            addr_abs = (ushort)((hi << 8) | lo);
             addr_abs += x;
 
             if ((addr_abs & 0xFF00) != (hi << 8))
@@ -259,10 +258,10 @@ namespace nes_emulator.src
             ushort hi = Read(pc);
             pc++;
 
-            addr_abs = (ushort)(hi << 8 | lo);
+            addr_abs = (ushort)((hi << 8) | lo);
             addr_abs += y;
 
-            if ((addr_abs & 0xFF00) != hi << 8)
+            if ((addr_abs & 0xFF00) != (hi << 8))
                 return 1;
             else
                 return 0;
@@ -285,15 +284,15 @@ namespace nes_emulator.src
             ushort ptr_hi = Read(pc);
             pc++;
 
-            ushort ptr = (ushort)(ptr_hi << 8 | ptr_lo);
+            ushort ptr = (ushort)((ptr_hi << 8) | ptr_lo);
 
             if (ptr_lo == 0x00FF) // Simulate page boundary hardware bug
             {
-                addr_abs = (ushort)(Read((ushort)((ptr & 0xFF00) << 8)) | Read((ushort)(ptr + 0)));
+                addr_abs = (ushort)((Read((ushort)(ptr & 0xFF00)) << 8) | Read((ushort)(ptr + 0)));
             }
             else // Behave normally
             {
-                addr_abs = (ushort)(Read((ushort)(ptr + 1)) << 8 | Read((ushort)(ptr + 0)));
+                addr_abs = (ushort)((Read((ushort)(ptr + 1)) << 8) | Read((ushort)(ptr + 0)));
             }
 
             return 0;
@@ -309,10 +308,10 @@ namespace nes_emulator.src
             ushort t = Read(pc);
             pc++;
 
-            ushort lo = Read((ushort)((ushort)(t + x) & 0x00FF));
-            ushort hi = Read((ushort)((ushort)(t + x + 1) & 0x00FF));
+            ushort lo = Read((ushort)((ushort)(t + (ushort)x) & 0x00FF));
+            ushort hi = Read((ushort)((ushort)(t + (ushort)x + 1) & 0x00FF));
 
-            addr_abs = (ushort)(hi << 8 | lo);
+            addr_abs = (ushort)((hi << 8) | lo);
 
             return 0;
         }
@@ -329,12 +328,12 @@ namespace nes_emulator.src
             pc++;
 
             ushort lo = Read((ushort)(t & 0x00FF));
-            ushort hi = Read((ushort)(t + 1 & 0x00FF));
+            ushort hi = Read((ushort)((t + 1) & 0x00FF));
 
-            addr_abs = (ushort)(hi << 8 | lo);
+            addr_abs = (ushort)((hi << 8) | lo);
             addr_abs += y;
 
-            if ((addr_abs & 0xFF00) != hi << 8)
+            if ((addr_abs & 0xFF00) != (hi << 8))
                 return 1;
             else
                 return 0;
@@ -439,7 +438,7 @@ namespace nes_emulator.src
 
             // Add is performed in 16-bit domain for emulation to capture any
             // carry bit, which will exist in bit 8 of the 16-bit word
-            temp = (ushort)(a + fetched + GetFlag(FLAGS6502.C));
+            temp = (ushort)((ushort)a + (ushort)fetched + (ushort)GetFlag(FLAGS6502.C));
 
             // The carry flag out exists in the high byte bit 0
             SetFlag(FLAGS6502.C, temp > 255);
@@ -448,10 +447,10 @@ namespace nes_emulator.src
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0);
 
             // The signed Overflow flag is set based on all that up there! :D
-            SetFlag(FLAGS6502.V, Convert.ToBoolean(~(a ^ fetched) & (a ^ temp) & 0x0080));
+            SetFlag(FLAGS6502.V, Convert.ToBoolean((~((ushort)a ^ (ushort)fetched) & ((ushort)a ^ (ushort)temp)) & 0x0080));
 
             // The negative flag is set to the most significant bit of the result
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x80));
 
             // Load the result into the accumulator (it's 8-bit dont forget!)
             a = (byte)(temp & 0x00FF);
@@ -494,14 +493,14 @@ namespace nes_emulator.src
             // Operating in 16-bit domain to capture carry out
 
             // We can invert the bottom 8 bits with bitwise xor
-            ushort value = (ushort)(fetched ^ 0x00FF);
+            ushort value = (ushort)(((ushort)fetched) ^ 0x00FF);
 
             // Notice this is exactly the same as addition from here!
-            temp = (ushort)(a + value + GetFlag(FLAGS6502.C));
-            SetFlag(FLAGS6502.C, Convert.ToBoolean((ushort)(temp & 0xFF00)));
+            temp = (ushort)((ushort)a + value + (ushort)GetFlag(FLAGS6502.C));
+            SetFlag(FLAGS6502.C, Convert.ToBoolean(temp & 0xFF00));
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0);
-            SetFlag(FLAGS6502.V, Convert.ToBoolean((temp ^ a) & (temp ^ value) & 0x0080));
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x0080)));
+            SetFlag(FLAGS6502.V, Convert.ToBoolean((temp ^ (ushort)a) & (temp ^ value) & 0x0080));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
             a = (byte)(temp & 0x00FF);
             return 1;
         }
@@ -524,7 +523,7 @@ namespace nes_emulator.src
             fetch();
             a = (byte)(a & fetched);
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(a & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
             return 1;
         }
 
@@ -535,10 +534,10 @@ namespace nes_emulator.src
         public byte ASL()
         {
             fetch();
-            temp = (ushort)(fetched << 1);
+            temp = (ushort)((ushort)fetched << 1);
             SetFlag(FLAGS6502.C, (temp & 0xFF00) > 0);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x80));
             if (lookup[opcode].addrmode == IMP)
                 a = (byte)(temp & 0x00FF);
             else
@@ -605,8 +604,8 @@ namespace nes_emulator.src
             fetch();
             temp = (ushort)(a & fetched);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(fetched & 1 << 7)));
-            SetFlag(FLAGS6502.V, Convert.ToBoolean((byte)(fetched & 1 << 6)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(fetched & (1 << 7)));
+            SetFlag(FLAGS6502.V, Convert.ToBoolean(fetched & (1 << 6)));
             return 0;
         }
 
@@ -671,7 +670,7 @@ namespace nes_emulator.src
             pc++;
 
             SetFlag(FLAGS6502.I, true);
-            Write((ushort)(0x0100 + stkp), (byte)(pc >> 8 & 0x00FF));
+            Write((ushort)(0x0100 + stkp), (byte)((pc >> 8) & 0x00FF));
             stkp--;
             Write((ushort)(0x0100 + stkp), (byte)(pc & 0x00FF));
             stkp--;
@@ -681,7 +680,7 @@ namespace nes_emulator.src
             stkp--;
             SetFlag(FLAGS6502.B, false);
 
-            pc = (ushort)(Read(0xFFFE) | Read(0xFFFF) << 8);
+            pc = (ushort)((ushort)Read(0xFFFE) | ((ushort)Read(0xFFFF) << 8));
             return 0;
         }
 
@@ -763,10 +762,10 @@ namespace nes_emulator.src
         public byte CMP()
         {
             fetch();
-            temp = (ushort)(a - fetched);
+            temp = (ushort)((ushort)a - (ushort)fetched);
             SetFlag(FLAGS6502.C, a >= fetched);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x0080)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
             return 1;
         }
 
@@ -777,10 +776,10 @@ namespace nes_emulator.src
         public byte CPX()
         {
             fetch();
-            temp = (ushort)(x - fetched);
+            temp = (ushort)((ushort)x - (ushort)fetched);
             SetFlag(FLAGS6502.C, x >= fetched);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x0080)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
             return 0;
         }
 
@@ -791,10 +790,10 @@ namespace nes_emulator.src
         public byte CPY()
         {
             fetch();
-            temp = (ushort)(y - fetched);
+            temp = (ushort)((ushort)y - (ushort)fetched);
             SetFlag(FLAGS6502.C, y >= fetched);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x0080)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
             return 0;
         }
 
@@ -806,9 +805,9 @@ namespace nes_emulator.src
         {
             fetch();
             temp = (ushort)(fetched - 1);
-            Write(addr_abs, (byte)(ushort)(temp & 0x00FF));
+            Write(addr_abs, (byte)(temp & 0x00FF));
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x0080)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
             return 0;
         }
 
@@ -820,7 +819,7 @@ namespace nes_emulator.src
         {
             x--;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(x & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
             return 0;
         }
 
@@ -832,7 +831,7 @@ namespace nes_emulator.src
         {
             y--;
             SetFlag(FLAGS6502.Z, y == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(y & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(y & 0x80));
             return 0;
         }
 
@@ -845,7 +844,7 @@ namespace nes_emulator.src
             fetch();
             a = (byte)(a ^ fetched);
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(a & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
             return 1;
         }
 
@@ -859,7 +858,7 @@ namespace nes_emulator.src
             temp = (ushort)(fetched + 1);
             Write(addr_abs, (byte)(temp & 0x00FF));
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x0080)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
             return 0;
         }
 
@@ -871,7 +870,7 @@ namespace nes_emulator.src
         {
             x++;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(x & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
             return 0;
         }
 
@@ -883,7 +882,7 @@ namespace nes_emulator.src
         {
             y++;
             SetFlag(FLAGS6502.Z, y == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(y & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(y & 0x80));
             return 0;
         }
 
@@ -903,7 +902,7 @@ namespace nes_emulator.src
         {
             pc--;
 
-            Write((ushort)(0x0100 + stkp), (byte)(pc >> 8 & 0x00FF));
+            Write((ushort)(0x0100 + stkp), (byte)((pc >> 8) & 0x00FF));
             stkp--;
             Write((ushort)(0x0100 + stkp), (byte)(pc & 0x00FF));
             stkp--;
@@ -921,7 +920,7 @@ namespace nes_emulator.src
             fetch();
             a = fetched;
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(a & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
             return 1;
         }
 
@@ -934,7 +933,7 @@ namespace nes_emulator.src
             fetch();
             x = fetched;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(x & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
             return 1;
         }
 
@@ -947,17 +946,17 @@ namespace nes_emulator.src
             fetch();
             y = fetched;
             SetFlag(FLAGS6502.Z, y == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(y & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(y & 0x80));
             return 1;
         }
 
         public byte LSR()
         {
             fetch();
-            SetFlag(FLAGS6502.C, Convert.ToBoolean((byte)(fetched & 0x0001)));
+            SetFlag(FLAGS6502.C, Convert.ToBoolean(fetched & 0x0001));
             temp = (ushort)(fetched >> 1);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((ushort)(temp & 0x0080)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
             if (lookup[opcode].addrmode == IMP)
                 a = (byte)(temp & 0x00FF);
             else
@@ -1030,7 +1029,7 @@ namespace nes_emulator.src
             stkp++;
             a = (byte)Read((ushort)(0x0100 + stkp));
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(a & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
             return 0;
         }
 
@@ -1062,7 +1061,7 @@ namespace nes_emulator.src
         public byte ROR()
         {
             fetch();
-            temp = (ushort)((ushort)(GetFlag(FLAGS6502.C) << 7) | fetched >> 1);
+            temp = (ushort)((ushort)(GetFlag(FLAGS6502.C) << 7) | (fetched >> 1));
             SetFlag(FLAGS6502.C, Convert.ToBoolean(fetched & 0x01));
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x00);
             SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
@@ -1077,8 +1076,8 @@ namespace nes_emulator.src
         {
             stkp++;
             status = (byte)Read((ushort)(0x0100 + stkp));
-            status = Convert.ToByte((byte)status & (~(byte)FLAGS6502.B));
-            status = Convert.ToByte((byte)status & (~(byte)FLAGS6502.U));
+            status = Convert.ToByte(status & (~(byte)FLAGS6502.B));
+            status = Convert.ToByte(status & (~(byte)FLAGS6502.U));
 
             stkp++;
             pc = (ushort)Read((ushort)(0x0100 + stkp));
@@ -1090,7 +1089,7 @@ namespace nes_emulator.src
         public byte RTS()
         {
             stkp++;
-            pc = Read((ushort)(0x0100 + stkp));
+            pc = (ushort)Read((ushort)(0x0100 + stkp));
             stkp++;
             pc |= (ushort)(Read((ushort)(0x0100 + stkp)) << 8);
 
@@ -1162,7 +1161,7 @@ namespace nes_emulator.src
         {
             x = a;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(x & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
             return 0;
         }
 
@@ -1174,7 +1173,7 @@ namespace nes_emulator.src
         {
             y = a;
             SetFlag(FLAGS6502.Z, y == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(y & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(y & 0x80));
             return 0;
         }
 
@@ -1186,7 +1185,7 @@ namespace nes_emulator.src
         {
             x = stkp;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(x & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
             return 0;
         }
 
@@ -1198,7 +1197,7 @@ namespace nes_emulator.src
         {
             a = x;
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(a & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
             return 0;
         }
 
@@ -1219,7 +1218,7 @@ namespace nes_emulator.src
         {
             a = y;
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean((byte)(a & 0x80)));
+            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
             return 0;
         }
 
@@ -1254,8 +1253,6 @@ namespace nes_emulator.src
                 SetFlag(FLAGS6502.U, true);
             }
 
-            //clock_count++;
-
             cycles--;
         }
 
@@ -1265,7 +1262,7 @@ namespace nes_emulator.src
             ushort lo = Read((ushort)(addr_abs + 0));
             ushort hi = Read((ushort)(addr_abs + 1));
 
-            pc = (ushort)(hi << 8 | lo);
+            pc = (ushort)((hi << 8) | lo);
 
             a = 0;
             x = 0;
@@ -1320,7 +1317,7 @@ namespace nes_emulator.src
             addr_abs = 0xFFFA;
             ushort lo = Read((ushort)(addr_abs + 0));
             ushort hi = Read((ushort)(addr_abs + 1));
-            pc = (byte)(hi << 8 | lo);
+            pc = (byte)((hi << 8) | lo);
 
             cycles = 8;
         }
