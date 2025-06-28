@@ -784,7 +784,7 @@ namespace nes_emulator.src
 
 				if(maskRegister.RenderSprites && cycle >= 1 && cycle < 258)
 				{
-					for(int i =0; i < spriteCount; i++)
+					for(int i = 0; i < spriteCount; i++)
 					{
 						if (spriteScanline[i].x > 0)
 						{
@@ -904,6 +904,8 @@ namespace nes_emulator.src
 									spriteCount++;
 								}
 							}
+
+							nOAMEntry++;
 						}
 						statusRegister.SpriteOverflow = (spriteCount > 8);
 					}
