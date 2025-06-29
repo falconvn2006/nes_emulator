@@ -28,7 +28,7 @@ namespace nes_emulator.src
 
         List<INSTRUCTION> lookup;
 
-        public enum FLAGS6502
+        public enum FLAGS6502 : byte
         {
             C = (1 << 0), // Carry bit
             Z = (1 << 1), // Zero

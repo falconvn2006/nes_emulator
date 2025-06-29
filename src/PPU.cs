@@ -700,8 +700,7 @@ namespace nes_emulator.src
 					{
 						vramAddr.CoarseX = 0;
 						//vramAddr.NametableX = Convert.ToBoolean(~Convert.ToByte(vramAddr.NametableX));
-						//vramAddr.NametableX = !vramAddr.NametableX;
-						vramAddr.NametableX = (vramAddr.NametableX == false);
+						vramAddr.NametableX = !vramAddr.NametableX;
 					}
 					else
 					{
@@ -727,8 +726,7 @@ namespace nes_emulator.src
 							vramAddr.CoarseY = 0;
 
 							//vramAddr.NametableY = Convert.ToBoolean(~Convert.ToByte(vramAddr.NametableY));
-							//vramAddr.NametableY = !vramAddr.NametableY;
-							vramAddr.NametableY = (vramAddr.NametableY == false);
+							vramAddr.NametableY = !vramAddr.NametableY;
 						}
 						else if (vramAddr.CoarseY == 31)
 						{
