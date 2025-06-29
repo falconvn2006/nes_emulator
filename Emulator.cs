@@ -210,13 +210,13 @@ namespace nes_emulator
 
 			ImGui.Text("Status:");
 			// CPU Statuses
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.N) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "N");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.V) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "V");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.B) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "B");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.D) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "D");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.I) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "I");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.Z) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "Z");
-			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & (byte)CPU.FLAGS6502.C) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "C");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & CPU.FLAGS6502.N) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "N");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & CPU.FLAGS6502.V) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "V");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & CPU.FLAGS6502.B) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "B");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & CPU.FLAGS6502.D) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "D");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & CPU.FLAGS6502.I) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "I");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & CPU.FLAGS6502.Z) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "Z");
+			ImGui.TextColored(Convert.ToBoolean(nes.cpu6502.status & CPU.FLAGS6502.C) ? new Vector4(0.0f, 1.0f, 0.68f, 1) : new Vector4(1.0f, 0.0f, 0.0f, 1), "C");
 
 			ImGui.Text($"Program Counter: ${nes.cpu6502.pc.ToString("X4")}");
 			ImGui.Text($"A: ${nes.cpu6502.a.ToString("X2")} [{nes.cpu6502.a}]");
@@ -291,10 +291,10 @@ namespace nes_emulator
 
 			for (int i = 0; i < 26; i++)
 			{
-				string s = i.ToString("X2") + ": (" + nes.ppu2C02.GetOAMPointer()[i * 4 + 3].ToString()
-					+ ", " + nes.ppu2C02.GetOAMPointer()[i*4+0].ToString() + ") "
-					+ "ID: " + nes.ppu2C02.GetOAMPointer()[i*4+1].ToString("X2")
-					+ " AT: " + nes.ppu2C02.GetOAMPointer()[i*4+2].ToString("X2");
+				string s = i.ToString("X2") + ": (" + nes.ppu2C02.oam[i * 4 + 3].ToString()
+					+ ", " + nes.ppu2C02.oam[i*4+0].ToString() + ") "
+					+ "ID: " + nes.ppu2C02.oam[i*4+1].ToString("X2")
+					+ " AT: " + nes.ppu2C02.oam[i*4+2].ToString("X2");
 				ImGui.Text(s);
 			}
 

@@ -10,7 +10,22 @@ namespace nes_emulator.src
 {
     public class CPU
     {
-        public struct INSTRUCTION
+		#region Constants
+
+		public const ushort PC_START_ADDRESS = 0xFFFC;
+		public const ushort IRQ_PC_START_ADDRESS = 0xFFFE;
+		public const ushort NMI_PC_START_ADDRESS = 0xFFFA;
+
+		public const byte INITIAL_STACK_POINTER = 0xFD;
+		public const ushort STACK_ADDRESS_HIGH_BYTE_MASK = 0x0100;
+
+		public const byte RESET_CYCLE_COUNT = 8;
+		public const byte IRQ_CYCLE_COUNT = 7;
+		public const byte NMI_CYCLE_COUNT = 8;
+
+		#endregion
+
+		public struct INSTRUCTION
         {
             public string name;
             public Func<byte> operate;
@@ -28,8 +43,10 @@ namespace nes_emulator.src
 
         List<INSTRUCTION> lookup;
 
+        [Flags]
         public enum FLAGS6502 : byte
         {
+            None = 0,
             C = (1 << 0), // Carry bit
             Z = (1 << 1), // Zero
             I = (1 << 2), // Disable Interrupts
@@ -45,7 +62,7 @@ namespace nes_emulator.src
         public byte y = 0x00;      // Y Register
         public byte stkp = 0x00;   // Stack pointer (points to a location on the bus)
         public ushort pc = 0x0000; // Program counter
-        public byte status = 0x00; // Status Register
+        public FLAGS6502 status = 0x00; // Status Register
 
         private ushort addr_abs = 0x0000;
         private ushort addr_rel = 0x00;
@@ -104,23 +121,6 @@ namespace nes_emulator.src
             return bus.CPURead(addr, false);
         }
 
-        private void SetFlag(FLAGS6502 f, bool v)
-        {
-            if (v)
-            {
-                status |= (byte)f;
-            }
-            else
-            {
-                status = (byte)(status & ~(byte)f);
-            }
-        }
-
-        private byte GetFlag(FLAGS6502 f)
-        {
-            return (byte)((status & (byte)f) > 0 ? 1 : 0);
-        }
-
         #region Addressing Modes
 
         ///////////////////////////////////////////////////////////////////////////////
@@ -141,7 +141,7 @@ namespace nes_emulator.src
         // There is no additional data required for this instruction. The instruction
         // does something very simple like like sets a status bit. However, we will
         // target the accumulator, for instructions like PHA
-        public byte IMP()
+        private byte IMP()
         {
             fetched = a;
             return 0;
@@ -151,7 +151,7 @@ namespace nes_emulator.src
         // Address Mode: Immediate
         // The instruction expects the next byte to be used as a value, so we'll prep
         // the read address to point to the next byte
-        public byte IMM()
+        private byte IMM()
         {
             addr_abs = pc++;
             return 0;
@@ -163,7 +163,7 @@ namespace nes_emulator.src
         // To save program bytes, zero page addressing allows you to absolutely address
         // a location in first 0xFF bytes of address range. Clearly this only requires
         // one byte instead of the usual two.
-        public byte ZP0()
+        private byte ZP0()
         {
             addr_abs = Read(pc);
             pc++;
@@ -177,10 +177,9 @@ namespace nes_emulator.src
         // Fundamentally the same as Zero Page addressing, but the contents of the X Register
         // is added to the supplied single byte address. This is useful for iterating through
         // ranges within the first page.
-        public byte ZPX()
+        private byte ZPX()
         {
-            addr_abs = (ushort)(Read(pc) + x);
-            pc++;
+            addr_abs = (ushort)(ReadPc() + x);
             addr_abs &= 0x00FF;
             return 0;
         }
@@ -188,10 +187,9 @@ namespace nes_emulator.src
 
         // Address Mode: Zero Page with Y Offset
         // Same as above but uses Y Register for offset
-        public byte ZPY()
+        private byte ZPY()
         {
-            addr_abs = (ushort)(Read(pc) + y);
-            pc++;
+            addr_abs = (ushort)(ReadPc() + y);
             addr_abs &= 0x00FF;
             return 0;
         }
@@ -201,10 +199,9 @@ namespace nes_emulator.src
         // This address mode is exclusive to branch instructions. The address
         // must reside within -128 to +127 of the branch instruction, i.e.
         // you cant directly branch to any address in the addressable range.
-        public byte REL()
+        private byte REL()
         {
-            addr_rel = Read(pc);
-            pc++;
+            addr_rel = ReadPc();
             if ((addr_rel & 0x80) != 0)
                 addr_rel |= 0xFF00;
             return 0;
@@ -213,14 +210,9 @@ namespace nes_emulator.src
 
         // Address Mode: Absolute 
         // A full 16-bit address is loaded and used
-        public byte ABS()
+        private byte ABS()
         {
-            ushort lo = Read(pc);
-            pc++;
-            ushort hi = Read(pc);
-            pc++;
-
-            addr_abs = (ushort)((hi << 8) | lo);
+            addr_abs = ReadPcAsAddress();
 
             return 0;
         }
@@ -230,17 +222,12 @@ namespace nes_emulator.src
         // Fundamentally the same as absolute addressing, but the contents of the X Register
         // is added to the supplied two byte address. If the resulting address changes
         // the page, an additional clock cycle is required
-        public byte ABX()
+        private byte ABX()
         {
-            ushort lo = Read(pc);
-            pc++;
-            ushort hi = Read(pc);
-            pc++;
+            ushort beforeOffset = ReadPcAsAddress();
+            addr_abs = (ushort)(beforeOffset + x);
 
-            addr_abs = (ushort)((hi << 8) | lo);
-            addr_abs += x;
-
-            if ((addr_abs & 0xFF00) != (hi << 8))
+            if ((addr_abs & 0xFF00) != (beforeOffset & 0xFF00))
                 return 1;
             else
                 return 0;
@@ -251,17 +238,12 @@ namespace nes_emulator.src
         // Fundamentally the same as absolute addressing, but the contents of the Y Register
         // is added to the supplied two byte address. If the resulting address changes
         // the page, an additional clock cycle is required
-        public byte ABY()
+        private byte ABY()
         {
-            ushort lo = Read(pc);
-            pc++;
-            ushort hi = Read(pc);
-            pc++;
+            ushort beforeOffset = ReadPcAsAddress();
+            addr_abs = (ushort)(beforeOffset + y);
 
-            addr_abs = (ushort)((hi << 8) | lo);
-            addr_abs += y;
-
-            if ((addr_abs & 0xFF00) != (hi << 8))
+            if ((addr_abs & 0xFF00) != (beforeOffset & 0xFF00))
                 return 1;
             else
                 return 0;
@@ -277,16 +259,11 @@ namespace nes_emulator.src
         // we need to cross a page boundary. This doesnt actually work on the chip as 
         // designed, instead it wraps back around in the same page, yielding an 
         // invalid actual address
-        public byte IND()
-        {
-            ushort ptr_lo = Read(pc);
-            pc++;
-            ushort ptr_hi = Read(pc);
-            pc++;
+        private byte IND()
+        { 
+            ushort ptr = ReadPcAsAddress();
 
-            ushort ptr = (ushort)((ptr_hi << 8) | ptr_lo);
-
-            if (ptr_lo == 0x00FF) // Simulate page boundary hardware bug
+            if ((ptr & 0x00FF) == 0x00FF) // Simulate page boundary hardware bug
             {
                 addr_abs = (ushort)((Read((ushort)(ptr & 0xFF00)) << 8) | Read((ushort)(ptr + 0)));
             }
@@ -303,13 +280,12 @@ namespace nes_emulator.src
         // The supplied 8-bit address is offset by X Register to index
         // a location in page 0x00. The actual 16-bit address is read 
         // from this location
-        public byte IZX()
+        private byte IZX()
         {
-            ushort t = Read(pc);
-            pc++;
+            byte t = ReadPc();
 
-            ushort lo = Read((ushort)((ushort)(t + (ushort)x) & 0x00FF));
-            ushort hi = Read((ushort)((ushort)(t + (ushort)x + 1) & 0x00FF));
+            ushort lo = Read((byte)(t + x));
+            ushort hi = Read((byte)(t + x + 1));
 
             addr_abs = (ushort)((hi << 8) | lo);
 
@@ -322,13 +298,13 @@ namespace nes_emulator.src
         // here the actual 16-bit address is read, and the contents of
         // Y Register is added to it to offset it. If the offset causes a
         // change in page then an additional clock cycle is required.
-        public byte IZY()
+        private byte IZY()
         {
-            ushort t = Read(pc);
-            pc++;
+            byte t = ReadPc();
 
-            ushort lo = Read((ushort)(t & 0x00FF));
-            ushort hi = Read((ushort)((t + 1) & 0x00FF));
+            byte lo = Read((ushort)(t & 0x00FF));
+			// The high byte read is limited to an address of 8 bit range in this specific case !
+			byte hi = Read((ushort)((t + 1) & 0x00FF));
 
             addr_abs = (ushort)((hi << 8) | lo);
             addr_abs += y;
@@ -353,10 +329,10 @@ namespace nes_emulator.src
         // 256, i.e. no far reaching memory fetch is required. "fetched"
         // is a variable global to the CPU, and is set by calling this 
         // function. It also returns it for convenience.
-        public byte fetch()
+        private byte fetch()
         {
-            if (!(lookup[opcode].addrmode == IMP))
-                fetched = (byte)Read(addr_abs);
+            if (lookup[opcode].addrmode != IMP)
+                fetched = Read(addr_abs);
             return fetched;
         }
 
@@ -431,14 +407,14 @@ namespace nes_emulator.src
         //       Positive Number + Positive Number = Positive Result -> OK! No Overflow
         //       Negative Number + Negative Number = Negative Result -> OK! NO Overflow
 
-        public byte ADC()
+        private byte ADC()
         {
             // Grab the data that we are adding to the accumulator
             fetch();
 
             // Add is performed in 16-bit domain for emulation to capture any
             // carry bit, which will exist in bit 8 of the 16-bit word
-            temp = (ushort)((ushort)a + (ushort)fetched + (ushort)GetFlag(FLAGS6502.C));
+            temp = (ushort)(a + fetched + (status.HasFlag(FLAGS6502.C) ? 1 : 0));
 
             // The carry flag out exists in the high byte bit 0
             SetFlag(FLAGS6502.C, temp > 255);
@@ -447,10 +423,10 @@ namespace nes_emulator.src
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0);
 
             // The signed Overflow flag is set based on all that up there! :D
-            SetFlag(FLAGS6502.V, Convert.ToBoolean((~((ushort)a ^ (ushort)fetched) & ((ushort)a ^ (ushort)temp)) & 0x0080));
+            SetFlag(FLAGS6502.V, ((~(a ^ fetched) & (a ^ temp)) & 0x0080) != 0);
 
             // The negative flag is set to the most significant bit of the result
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x80));
+            SetFlag(FLAGS6502.N, (temp & 0x80) != 0);
 
             // Load the result into the accumulator (it's 8-bit dont forget!)
             a = (byte)(temp & 0x00FF);
@@ -486,21 +462,21 @@ namespace nes_emulator.src
         // of M, the data(!) therfore we can simply add, exactly the same way we did 
         // before.
 
-        public byte SBC()
+        private byte SBC()
         {
             fetch();
 
             // Operating in 16-bit domain to capture carry out
 
             // We can invert the bottom 8 bits with bitwise xor
-            ushort value = (ushort)(((ushort)fetched) ^ 0x00FF);
+            ushort value = (ushort)(fetched ^ 0x00FF);
 
             // Notice this is exactly the same as addition from here!
-            temp = (ushort)((ushort)a + value + (ushort)GetFlag(FLAGS6502.C));
-            SetFlag(FLAGS6502.C, Convert.ToBoolean(temp & 0xFF00));
+            temp = (ushort)(a + value + (status.HasFlag(FLAGS6502.C) ? 1 : 0));
+            SetFlag(FLAGS6502.C, (temp & 0xFF00) != 0);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0);
-            SetFlag(FLAGS6502.V, Convert.ToBoolean((temp ^ (ushort)a) & (temp ^ value) & 0x0080));
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.V, (ushort)((temp ^ a) & (temp ^ value) & 0x0080) != 0);
+            SetFlag(FLAGS6502.N, (temp & 0x80) != 0);
             a = (byte)(temp & 0x00FF);
             return 1;
         }
@@ -518,12 +494,12 @@ namespace nes_emulator.src
         // Instruction: Bitwise Logic AND
         // Function:    A = A & M
         // Flags Out:   N, Z
-        public byte AND()
+        private byte AND()
         {
             fetch();
             a = (byte)(a & fetched);
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
+            SetFlag(FLAGS6502.N, (a & 0x80) != 0);
             return 1;
         }
 
@@ -531,13 +507,13 @@ namespace nes_emulator.src
         // Instruction: Arithmetic Shift Left
         // Function:    A = C <- (A << 1) <- 0
         // Flags Out:   N, Z, C
-        public byte ASL()
+        private byte ASL()
         {
             fetch();
             temp = (ushort)((ushort)fetched << 1);
             SetFlag(FLAGS6502.C, (temp & 0xFF00) > 0);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x80));
+            SetFlag(FLAGS6502.N, (temp & 0x80) != 0);
             if (lookup[opcode].addrmode == IMP)
                 a = (byte)(temp & 0x00FF);
             else
@@ -548,9 +524,9 @@ namespace nes_emulator.src
 
         // Instruction: Branch if Carry Clear
         // Function:    if(C == 0) pc = address 
-        public byte BCC()
+        private byte BCC()
         {
-            if (GetFlag(FLAGS6502.C) == 0)
+            if (!status.HasFlag(FLAGS6502.C))
             {
                 cycles++;
                 addr_abs = (ushort)(pc + addr_rel);
@@ -566,9 +542,9 @@ namespace nes_emulator.src
 
         // Instruction: Branch if Carry Set
         // Function:    if(C == 1) pc = address
-        public byte BCS()
+        private byte BCS()
         {
-            if (GetFlag(FLAGS6502.C) == 1)
+            if (status.HasFlag(FLAGS6502.C))
             {
                 cycles++;
                 addr_abs = (ushort)(pc + addr_rel);
@@ -584,9 +560,9 @@ namespace nes_emulator.src
 
         // Instruction: Branch if Equal
         // Function:    if(Z == 1) pc = address
-        public byte BEQ()
+        private byte BEQ()
         {
-            if (GetFlag(FLAGS6502.Z) == 1)
+            if (status.HasFlag(FLAGS6502.Z))
             {
                 cycles++;
                 addr_abs = (ushort)(pc + addr_rel);
@@ -599,22 +575,22 @@ namespace nes_emulator.src
             return 0;
         }
 
-        public byte BIT()
+        private byte BIT()
         {
             fetch();
             temp = (ushort)(a & fetched);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(fetched & (1 << 7)));
-            SetFlag(FLAGS6502.V, Convert.ToBoolean(fetched & (1 << 6)));
+            SetFlag(FLAGS6502.N, (fetched & (1 << 7)) != 0);
+            SetFlag(FLAGS6502.V, (fetched & (1 << 6)) != 0);
             return 0;
         }
 
 
         // Instruction: Branch if Negative
         // Function:    if(N == 1) pc = address
-        public byte BMI()
+        private byte BMI()
         {
-            if (GetFlag(FLAGS6502.N) == 1)
+            if (status.HasFlag(FLAGS6502.N))
             {
                 cycles++;
                 addr_abs = (ushort)(pc + addr_rel);
@@ -630,9 +606,9 @@ namespace nes_emulator.src
 
         // Instruction: Branch if Not Equal
         // Function:    if(Z == 0) pc = address
-        public byte BNE()
+        private byte BNE()
         {
-            if (GetFlag(FLAGS6502.Z) == 0)
+            if (!status.HasFlag(FLAGS6502.Z))
             {
                 cycles++;
                 addr_abs = (ushort)(pc + addr_rel);
@@ -648,9 +624,9 @@ namespace nes_emulator.src
 
         // Instruction: Branch if Positive
         // Function:    if(N == 0) pc = address
-        public byte BPL()
+        private byte BPL()
         {
-            if (GetFlag(FLAGS6502.N) == 0)
+            if (!status.HasFlag(FLAGS6502.N))
             {
                 cycles++;
                 addr_abs = (ushort)(pc + addr_rel);
@@ -665,31 +641,30 @@ namespace nes_emulator.src
 
         // Instruction: Break
         // Function:    Program Sourced Interrupt
-        public byte BRK()
+        private byte BRK()
         {
             pc++;
 
-            SetFlag(FLAGS6502.I, true);
-            Write((ushort)(0x0100 + stkp), (byte)((pc >> 8) & 0x00FF));
-            stkp--;
-            Write((ushort)(0x0100 + stkp), (byte)(pc & 0x00FF));
-            stkp--;
+            PushPcOnStack();
 
             SetFlag(FLAGS6502.B, true);
-            Write((ushort)(0x0100 + stkp), status);
-            stkp--;
+            PushStack((byte)status);
             SetFlag(FLAGS6502.B, false);
 
-            pc = (ushort)((ushort)Read(0xFFFE) | ((ushort)Read(0xFFFF) << 8));
+			// After writing to the stack, set the Interupt flag to 1
+			// to prevent other interrupts
+			SetFlag(FLAGS6502.I, true);
+
+			pc = ReadAsAddress(IRQ_PC_START_ADDRESS);
             return 0;
         }
 
 
         // Instruction: Branch if Overflow Clear
         // Function:    if(V == 0) pc = address
-        public byte BVC()
+        private byte BVC()
         {
-            if (GetFlag(FLAGS6502.V) == 0)
+            if (!status.HasFlag(FLAGS6502.V))
             {
                 cycles++;
                 addr_abs = (ushort)(pc + addr_rel);
@@ -705,9 +680,9 @@ namespace nes_emulator.src
 
         // Instruction: Branch if Overflow Set
         // Function:    if(V == 1) pc = address
-        public byte BVS()
+        private byte BVS()
         {
-            if (GetFlag(FLAGS6502.V) == 1)
+            if (status.HasFlag(FLAGS6502.V))
             {
                 cycles++;
                 addr_abs = (ushort)(pc + addr_rel);
@@ -723,7 +698,7 @@ namespace nes_emulator.src
 
         // Instruction: Clear Carry Flag
         // Function:    C = 0
-        public byte CLC()
+        private byte CLC()
         {
             SetFlag(FLAGS6502.C, false);
             return 0;
@@ -732,7 +707,7 @@ namespace nes_emulator.src
 
         // Instruction: Clear Decimal Flag
         // Function:    D = 0
-        public byte CLD()
+        private byte CLD()
         {
             SetFlag(FLAGS6502.D, false);
             return 0;
@@ -741,7 +716,7 @@ namespace nes_emulator.src
 
         // Instruction: Disable Interrupts / Clear Interrupt Flag
         // Function:    I = 0
-        public byte CLI()
+        private byte CLI()
         {
             SetFlag(FLAGS6502.I, false);
             return 0;
@@ -750,7 +725,7 @@ namespace nes_emulator.src
 
         // Instruction: Clear Overflow Flag
         // Function:    V = 0
-        public byte CLV()
+        private byte CLV()
         {
             SetFlag(FLAGS6502.V, false);
             return 0;
@@ -759,13 +734,13 @@ namespace nes_emulator.src
         // Instruction: Compare Accumulator
         // Function:    C <- A >= M      Z <- (A - M) == 0
         // Flags Out:   N, C, Z
-        public byte CMP()
+        private byte CMP()
         {
             fetch();
-            temp = (ushort)((ushort)a - (ushort)fetched);
+            temp = (ushort)(a - fetched);
             SetFlag(FLAGS6502.C, a >= fetched);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.N, (temp & 0x0080) != 0);
             return 1;
         }
 
@@ -773,13 +748,13 @@ namespace nes_emulator.src
         // Instruction: Compare X Register
         // Function:    C <- X >= M      Z <- (X - M) == 0
         // Flags Out:   N, C, Z
-        public byte CPX()
+        private byte CPX()
         {
             fetch();
-            temp = (ushort)((ushort)x - (ushort)fetched);
+            temp = (ushort)(x - fetched);
             SetFlag(FLAGS6502.C, x >= fetched);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.N, (temp & 0x0080) != 0);
             return 0;
         }
 
@@ -787,13 +762,13 @@ namespace nes_emulator.src
         // Instruction: Compare Y Register
         // Function:    C <- Y >= M      Z <- (Y - M) == 0
         // Flags Out:   N, C, Z
-        public byte CPY()
+        private byte CPY()
         {
             fetch();
-            temp = (ushort)((ushort)y - (ushort)fetched);
+            temp = (ushort)(y - fetched);
             SetFlag(FLAGS6502.C, y >= fetched);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.N, (temp & 0x0080) != 0);
             return 0;
         }
 
@@ -801,13 +776,13 @@ namespace nes_emulator.src
         // Instruction: Decrement Value at Memory Location
         // Function:    M = M - 1
         // Flags Out:   N, Z
-        public byte DEC()
+        private byte DEC()
         {
             fetch();
             temp = (ushort)(fetched - 1);
             Write(addr_abs, (byte)(temp & 0x00FF));
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.N, (temp & 0x0080) != 0);
             return 0;
         }
 
@@ -815,11 +790,11 @@ namespace nes_emulator.src
         // Instruction: Decrement X Register
         // Function:    X = X - 1
         // Flags Out:   N, Z
-        public byte DEX()
+        private byte DEX()
         {
             x--;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
+            SetFlag(FLAGS6502.N, (x & 0x80) != 0);
             return 0;
         }
 
@@ -827,11 +802,11 @@ namespace nes_emulator.src
         // Instruction: Decrement Y Register
         // Function:    Y = Y - 1
         // Flags Out:   N, Z
-        public byte DEY()
+        private byte DEY()
         {
             y--;
             SetFlag(FLAGS6502.Z, y == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(y & 0x80));
+            SetFlag(FLAGS6502.N, (y & 0x80) != 0);
             return 0;
         }
 
@@ -839,12 +814,12 @@ namespace nes_emulator.src
         // Instruction: Bitwise Logic XOR
         // Function:    A = A xor M
         // Flags Out:   N, Z
-        public byte EOR()
+        private byte EOR()
         {
             fetch();
             a = (byte)(a ^ fetched);
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
+            SetFlag(FLAGS6502.N, (a & 0x80) != 0);
             return 1;
         }
 
@@ -852,13 +827,13 @@ namespace nes_emulator.src
         // Instruction: Increment Value at Memory Location
         // Function:    M = M + 1
         // Flags Out:   N, Z
-        public byte INC()
+        private byte INC()
         {
             fetch();
             temp = (ushort)(fetched + 1);
             Write(addr_abs, (byte)(temp & 0x00FF));
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.N, (temp & 0x0080) != 0);
             return 0;
         }
 
@@ -866,11 +841,11 @@ namespace nes_emulator.src
         // Instruction: Increment X Register
         // Function:    X = X + 1
         // Flags Out:   N, Z
-        public byte INX()
+        private byte INX()
         {
             x++;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
+            SetFlag(FLAGS6502.N, (x & 0x80) != 0);
             return 0;
         }
 
@@ -878,18 +853,18 @@ namespace nes_emulator.src
         // Instruction: Increment Y Register
         // Function:    Y = Y + 1
         // Flags Out:   N, Z
-        public byte INY()
+        private byte INY()
         {
             y++;
             SetFlag(FLAGS6502.Z, y == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(y & 0x80));
+            SetFlag(FLAGS6502.N, (y & 0x80) != 0);
             return 0;
         }
 
 
         // Instruction: Jump To Location
         // Function:    pc = address
-        public byte JMP()
+        private byte JMP()
         {
             pc = addr_abs;
             return 0;
@@ -898,14 +873,11 @@ namespace nes_emulator.src
 
         // Instruction: Jump To Sub-Routine
         // Function:    Push current pc to stack, pc = address
-        public byte JSR()
+        private byte JSR()
         {
             pc--;
 
-            Write((ushort)(0x0100 + stkp), (byte)((pc >> 8) & 0x00FF));
-            stkp--;
-            Write((ushort)(0x0100 + stkp), (byte)(pc & 0x00FF));
-            stkp--;
+            PushPcOnStack();
 
             pc = addr_abs;
             return 0;
@@ -915,12 +887,12 @@ namespace nes_emulator.src
         // Instruction: Load The Accumulator
         // Function:    A = M
         // Flags Out:   N, Z
-        public byte LDA()
+        private byte LDA()
         {
             fetch();
             a = fetched;
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
+            SetFlag(FLAGS6502.N, (a & 0x80) != 0);
             return 1;
         }
 
@@ -928,12 +900,12 @@ namespace nes_emulator.src
         // Instruction: Load The X Register
         // Function:    X = M
         // Flags Out:   N, Z
-        public byte LDX()
+        private byte LDX()
         {
             fetch();
             x = fetched;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
+            SetFlag(FLAGS6502.N, (x & 0x80) != 0);
             return 1;
         }
 
@@ -941,22 +913,22 @@ namespace nes_emulator.src
         // Instruction: Load The Y Register
         // Function:    Y = M
         // Flags Out:   N, Z
-        public byte LDY()
+        private byte LDY()
         {
             fetch();
             y = fetched;
             SetFlag(FLAGS6502.Z, y == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(y & 0x80));
+            SetFlag(FLAGS6502.N, (y & 0x80) != 0);
             return 1;
         }
 
-        public byte LSR()
+        private byte LSR()
         {
             fetch();
-            SetFlag(FLAGS6502.C, Convert.ToBoolean(fetched & 0x0001));
+            SetFlag(FLAGS6502.C, (fetched & 0x0001) != 0);
             temp = (ushort)(fetched >> 1);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.N, (temp & 0x0080) != 0);
             if (lookup[opcode].addrmode == IMP)
                 a = (byte)(temp & 0x00FF);
             else
@@ -988,22 +960,21 @@ namespace nes_emulator.src
         // Instruction: Bitwise Logic OR
         // Function:    A = A | M
         // Flags Out:   N, Z
-        public byte ORA()
+        private byte ORA()
         {
             fetch();
             a = (byte)(a | fetched);
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
+            SetFlag(FLAGS6502.N, (a & 0x80) != 0);
             return 1;
         }
 
 
         // Instruction: Push Accumulator to Stack
         // Function:    A -> stack
-        public byte PHA()
+        private byte PHA()
         {
-            Write((ushort)(0x0100 + stkp), a);
-            stkp--;
+            PushStack(a);
             return 0;
         }
 
@@ -1011,12 +982,11 @@ namespace nes_emulator.src
         // Instruction: Push Status Register to Stack
         // Function:    status -> stack
         // Note:        Break flag is set to 1 before push
-        public byte PHP()
+        private byte PHP()
         {
-            Write((ushort)(0x0100 + stkp), (byte)(status | (byte)FLAGS6502.B | (byte)FLAGS6502.U));
+            PushStack((byte)(status | FLAGS6502.B | FLAGS6502.U));
             SetFlag(FLAGS6502.B, false);
             SetFlag(FLAGS6502.U, false);
-            stkp--;
             return 0;
         }
 
@@ -1024,33 +994,31 @@ namespace nes_emulator.src
         // Instruction: Pop Accumulator off Stack
         // Function:    A <- stack
         // Flags Out:   N, Z
-        public byte PLA()
+        private byte PLA()
         {
-            stkp++;
-            a = (byte)Read((ushort)(0x0100 + stkp));
+            a = PopStack();
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
+            SetFlag(FLAGS6502.N, (a & 0x80) != 0);
             return 0;
         }
 
 
         // Instruction: Pop Status Register off Stack
         // Function:    Status <- stack
-        public byte PLP()
+        private byte PLP()
         {
-            stkp++;
-            status = (byte)Read((ushort)(0x0100 + stkp));
+            status = (FLAGS6502)PopStack();
             SetFlag(FLAGS6502.U, true);
             return 0;
         }
 
-        public byte ROL()
+        private byte ROL()
         {
             fetch();
-            temp = (ushort)((ushort)(fetched << 1) | GetFlag(FLAGS6502.C));
-            SetFlag(FLAGS6502.C, Convert.ToBoolean(temp & 0xFF00));
+            temp = (ushort)((ushort)(fetched << 1) | (status.HasFlag(FLAGS6502.C) ? 1 : 0));
+            SetFlag(FLAGS6502.C, (temp & 0xFF00) != 0);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x0000);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.N, (temp & 0x0080) != 0);
             if (lookup[opcode].addrmode == IMP)
                 a = (byte)(temp & 0x00FF);
             else
@@ -1058,13 +1026,13 @@ namespace nes_emulator.src
             return 0;
         }
 
-        public byte ROR()
+        private byte ROR()
         {
             fetch();
-            temp = (ushort)((ushort)(GetFlag(FLAGS6502.C) << 7) | (fetched >> 1));
-            SetFlag(FLAGS6502.C, Convert.ToBoolean(fetched & 0x01));
+            temp = (ushort)(((status.HasFlag(FLAGS6502.C) ? 1 : 0) << 7) | (fetched >> 1));
+            SetFlag(FLAGS6502.C, (fetched & 0x01) != 0);
             SetFlag(FLAGS6502.Z, (temp & 0x00FF) == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(temp & 0x0080));
+            SetFlag(FLAGS6502.N, (temp & 0x0080) != 0);
             if (lookup[opcode].addrmode == IMP)
                 a = (byte)(temp & 0x00FF);
             else
@@ -1072,26 +1040,19 @@ namespace nes_emulator.src
             return 0;
         }
 
-        public byte RTI()
+        private byte RTI()
         {
-            stkp++;
-            status = (byte)Read((ushort)(0x0100 + stkp));
-            status = Convert.ToByte(status & (~(byte)FLAGS6502.B));
-            status = Convert.ToByte(status & (~(byte)FLAGS6502.U));
+            status = (FLAGS6502)PopStack();
+            status &= ~FLAGS6502.B;
+            status &= ~FLAGS6502.U;
 
-            stkp++;
-            pc = (ushort)Read((ushort)(0x0100 + stkp));
-            stkp++;
-            pc |= (ushort)(Read((ushort)(0x0100 + stkp)) << 8);
+            PopStackToPc();
             return 0;
         }
 
-        public byte RTS()
+        private byte RTS()
         {
-            stkp++;
-            pc = (ushort)Read((ushort)(0x0100 + stkp));
-            stkp++;
-            pc |= (ushort)(Read((ushort)(0x0100 + stkp)) << 8);
+            PopStackToPc();
 
             pc++;
             return 0;
@@ -1102,7 +1063,7 @@ namespace nes_emulator.src
 
         // Instruction: Set Carry Flag
         // Function:    C = 1
-        public byte SEC()
+        private byte SEC()
         {
             SetFlag(FLAGS6502.C, true);
             return 0;
@@ -1111,7 +1072,7 @@ namespace nes_emulator.src
 
         // Instruction: Set Decimal Flag
         // Function:    D = 1
-        public byte SED()
+        private byte SED()
         {
             SetFlag(FLAGS6502.D, true);
             return 0;
@@ -1120,7 +1081,7 @@ namespace nes_emulator.src
 
         // Instruction: Set Interrupt Flag / Enable Interrupts
         // Function:    I = 1
-        public byte SEI()
+        private byte SEI()
         {
             SetFlag(FLAGS6502.I, true);
             return 0;
@@ -1129,7 +1090,7 @@ namespace nes_emulator.src
 
         // Instruction: Store Accumulator at Address
         // Function:    M = A
-        public byte STA()
+        private byte STA()
         {
             Write(addr_abs, a);
             return 0;
@@ -1138,7 +1099,7 @@ namespace nes_emulator.src
 
         // Instruction: Store X Register at Address
         // Function:    M = X
-        public byte STX()
+        private byte STX()
         {
             Write(addr_abs, x);
             return 0;
@@ -1147,7 +1108,7 @@ namespace nes_emulator.src
 
         // Instruction: Store Y Register at Address
         // Function:    M = Y
-        public byte STY()
+        private byte STY()
         {
             Write(addr_abs, y);
             return 0;
@@ -1157,11 +1118,11 @@ namespace nes_emulator.src
         // Instruction: Transfer Accumulator to X Register
         // Function:    X = A
         // Flags Out:   N, Z
-        public byte TAX()
+        private byte TAX()
         {
             x = a;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
+            SetFlag(FLAGS6502.N, (x & 0x80) != 0);
             return 0;
         }
 
@@ -1169,11 +1130,11 @@ namespace nes_emulator.src
         // Instruction: Transfer Accumulator to Y Register
         // Function:    Y = A
         // Flags Out:   N, Z
-        public byte TAY()
+        private byte TAY()
         {
             y = a;
             SetFlag(FLAGS6502.Z, y == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(y & 0x80));
+            SetFlag(FLAGS6502.N, (y & 0x80) != 0);
             return 0;
         }
 
@@ -1181,11 +1142,11 @@ namespace nes_emulator.src
         // Instruction: Transfer Stack Pointer to X Register
         // Function:    X = stack pointer
         // Flags Out:   N, Z
-        public byte TSX()
+        private byte TSX()
         {
             x = stkp;
             SetFlag(FLAGS6502.Z, x == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(x & 0x80));
+            SetFlag(FLAGS6502.N, (x & 0x80) != 0);
             return 0;
         }
 
@@ -1193,18 +1154,18 @@ namespace nes_emulator.src
         // Instruction: Transfer X Register to Accumulator
         // Function:    A = X
         // Flags Out:   N, Z
-        public byte TXA()
+        private byte TXA()
         {
             a = x;
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
+            SetFlag(FLAGS6502.N, (a & 0x80) != 0);
             return 0;
         }
 
 
         // Instruction: Transfer X Register to Stack Pointer
         // Function:    stack pointer = X
-        public byte TXS()
+        private byte TXS()
         {
             stkp = x;
             return 0;
@@ -1214,17 +1175,17 @@ namespace nes_emulator.src
         // Instruction: Transfer Y Register to Accumulator
         // Function:    A = Y
         // Flags Out:   N, Z
-        public byte TYA()
+        private byte TYA()
         {
             a = y;
             SetFlag(FLAGS6502.Z, a == 0x00);
-            SetFlag(FLAGS6502.N, Convert.ToBoolean(a & 0x80));
+            SetFlag(FLAGS6502.N, (a & 0x80) != 0);
             return 0;
         }
 
 
         // This function captures illegal opcodes
-        public byte XXX()
+        private byte XXX()
         {
             return 0;
         }
@@ -1239,7 +1200,7 @@ namespace nes_emulator.src
             {
                 opcode = (byte)Read(pc);
 
-                SetFlag(FLAGS6502.U, true);
+                status |= FLAGS6502.U;
 
                 pc++;
 
@@ -1250,8 +1211,8 @@ namespace nes_emulator.src
 
                 cycles += (byte)(additional_cycle1 & additional_cycle2);
 
-                SetFlag(FLAGS6502.U, true);
-            }
+				status |= FLAGS6502.U;
+			}
 
             cycles--;
         }
@@ -1268,7 +1229,7 @@ namespace nes_emulator.src
             x = 0;
             y = 0;
             stkp = 0xFD;
-            status = 0x00 | (byte)FLAGS6502.U;
+            status = FLAGS6502.U;
 
             addr_rel = 0x0000;
             addr_abs = 0x0000;
@@ -1279,54 +1240,116 @@ namespace nes_emulator.src
 
         public void IRQ()
         {
-            if (GetFlag(FLAGS6502.I) == 0)
+            if (!status.HasFlag(FLAGS6502.I))
             {
-                Write((ushort)(0x0100 + stkp), (byte)((pc >> 8) & 0x00FF));
-                stkp--;
-                Write((ushort)(0x0100 + stkp), (byte)(pc & 0x00FF));
-                stkp--;
+                PushPcOnStack();
 
-                SetFlag(FLAGS6502.B, false);
-                SetFlag(FLAGS6502.U, true);
-                SetFlag(FLAGS6502.I, true);
-                Write((ushort)(0x0100 + stkp), status);
-                stkp--;
+                status |= FLAGS6502.B;
+                status |= FLAGS6502.U;
+                PushStack((byte)status);
 
-                addr_abs = 0xFFFE;
-                ushort lo = Read((ushort)(addr_abs + 0));
-                ushort hi = Read((ushort)(addr_abs + 1));
-                pc = (byte)(hi << 8 | lo);
+                status |= FLAGS6502.I;
 
-                cycles = 7;
+                pc = ReadAsAddress(IRQ_PC_START_ADDRESS);
+
+                cycles = IRQ_CYCLE_COUNT;
             }
         }
 
         public void NMI()
         {
-            Write((ushort)(0x0100 + stkp), (byte)((pc >> 8) & 0x00FF));
-            stkp--;
-            Write((ushort)(0x0100 + stkp), (byte)(pc & 0x00FF));
-            stkp--;
+            PushStack((byte)((pc >> 8) & 0x00FF));
+            PushStack((byte)(pc & 0x00FF));
 
-            SetFlag(FLAGS6502.B, false);
-            SetFlag(FLAGS6502.U, true);
-            SetFlag(FLAGS6502.I, true);
-            Write((ushort)(0x0100 + stkp), status);
-            stkp--;
+            status |= FLAGS6502.B;
+            status |= FLAGS6502.U;
+            PushStack((byte)status);
 
-            addr_abs = 0xFFFA;
-            ushort lo = Read((ushort)(addr_abs + 0));
-            ushort hi = Read((ushort)(addr_abs + 1));
-            pc = (byte)((hi << 8) | lo);
+            status |= FLAGS6502.I;
 
-            cycles = 8;
+            pc = ReadAsAddress(NMI_PC_START_ADDRESS);
+
+            cycles = NMI_CYCLE_COUNT;
         }
 
-        #endregion
+		#endregion
 
-        #region Helper functions
+		#region Helpers
 
-        public bool Complete()
+		private void PushStack(byte value)
+		{
+			Write((ushort)(STACK_ADDRESS_HIGH_BYTE_MASK + stkp), value);
+			stkp--;
+		}
+
+		private void PushPcOnStack()
+		{
+			PushStack((byte)((pc >> 8) & 0x00FF)); // Store the high byte (& 0x00FF clears the high portion)
+			PushStack((byte)(pc & 0x00FF)); // Store the low byte
+		}
+
+		private byte PopStack()
+		{
+			stkp++;
+			return Read((ushort)(STACK_ADDRESS_HIGH_BYTE_MASK + stkp));
+		}
+
+		private void PopStackToPc()
+		{
+			pc = PopStack();
+			pc |= (ushort)(PopStack() << 8);
+
+		}
+
+
+		private ushort ReadAsAddress(ushort startAddress)
+		{
+			addr_abs = startAddress;
+			ushort low = Read((ushort)(addr_abs + 0));
+			ushort high = Read((ushort)(addr_abs + 1));
+
+			// return the result as an address
+			return (ushort)((high << 8) | low);
+		}
+
+		/// <summary>
+		/// Read the data at current program counter and increments it after
+		/// </summary>
+		/// <returns></returns>
+		private byte ReadPc()
+		{
+			return Read(pc++);
+
+		}
+
+		/// <summary>
+		/// Read the next two bytes at current program counter, increments and return as a ushort address
+		/// </summary>
+		/// <returns></returns>
+		private ushort ReadPcAsAddress()
+		{
+			ushort low = ReadPc();
+			ushort high = ReadPc();
+
+			// return the result as an address
+			return (ushort)((high << 8) | low);
+		}
+
+		/// <summary>
+		/// Set of unset a flag based on a condition
+		/// </summary>
+		/// <param name="flag"></param>
+		/// <param name="isSet"></param>
+		private void SetFlag(FLAGS6502 flag, bool isSet)
+		{
+			status = isSet ? status | flag : status & ~flag;
+		}
+
+		#endregion
+
+		#region Debug functions
+
+		public bool Complete()
         {
             return cycles == 0;
         }

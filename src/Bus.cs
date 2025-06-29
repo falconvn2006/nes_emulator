@@ -125,7 +125,7 @@ namespace nes_emulator.src
                         {
                             unsafe
                             {
-                                ppu2C02.GetOAMPointer()[dmaAddr] = dmaData;
+                                ppu2C02.oam[dmaAddr] = dmaData;
                                 dmaAddr++;
 
                                 if(dmaAddr == 0x00)

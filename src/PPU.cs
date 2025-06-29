@@ -1,6 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel.DataAnnotations;
+using System.IO.Compression;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -11,6 +15,7 @@ using OpenTK.Graphics.OpenGL4;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
+using static nes_emulator.src.PPU;
 
 namespace nes_emulator.src
 {
@@ -28,211 +33,71 @@ namespace nes_emulator.src
 			}
 		}
 
+		[StructLayout(LayoutKind.Explicit, Pack = 1)]
 		public struct ObjectAttributeEntry
 		{
-			public byte y;			// Y position of sprite
-			public byte id;			// ID of tile from pattern memory
-			public byte attribute;	// Flags define how sprite should be rendered
-			public byte x;			// X position of sprite
+			[FieldOffset(0)] public uint entry;         // This whole struct (union)
+			[FieldOffset(0)] public byte y;				// Y position of sprite
+			[FieldOffset(1)] public byte id;            // ID of tile from pattern memory
+			[FieldOffset(2)] public byte attribute;		// Flags define how sprite should be rendered
+			[FieldOffset(3)] public byte x;				// X position of sprite
 		}
 
-		[StructLayout(LayoutKind.Explicit)]
-		public struct Status
-		{
-			[FieldOffset(0)]
-			public byte reg;
+		// bit fields are not a thing in C# :(
+		// Using BitVectors to emulate this behavior
 
-			[FieldOffset(0)]
-			private byte bits;
+		private BitVector32 status = new BitVector32(0);
+		private BitVector32 mask = new BitVector32(0);
+		private BitVector32 control = new BitVector32(0);
+		private BitVector32 vram_addr = new BitVector32(0);
+		private BitVector32 tram_addr = new BitVector32(0);
 
-			public bool SpriteOverflow
-			{
-				get => (bits & (1 << 5)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 5)) : (byte)(bits & ~(1 << 5));
-			}
+		// Helper section
+		// BitVector internal data is read only and can't create a mask for the whole 32bit
+		// No data structure are greater than 16 bit anyway so this is enough
+		// This is actually a bug though... the biggest mask can only be 15bit >:@
+		// Good thing bit 16 is never used anyway...
+		private BitVector32.Section allFirst15 = BitVector32.CreateSection(short.MaxValue); // Should have been ushort.MaxValue but Section.Mask is short type... and no ushort.MinVlue doesn't work !
 
-			public bool SpriteZeroHit
-			{
-				get => (bits & (1 << 6)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 6)) : (byte)(bits & ~(1 << 6));
-			}
+		// Status sections
+		private BitVector32.Section statusUnused;
+		private BitVector32.Section statusSpriteOverflow;
+		private BitVector32.Section statusSpriteZeroHit;
+		private BitVector32.Section statusVerticalBlank;
 
-			public bool VerticalBlank
-			{
-				get => (bits & (1 << 7)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 7)) : (byte)(bits & ~(1 << 7));
-			}
-		}
+		// Mask... masks
+		private int maskGrayscale;
+		private int maskRenderBackgroundLeft;
+		private int maskRenderSpritesLeft;
+		private int maskRenderBackground;
+		private int maskRenderSprites;
+		private int maskEnhanceRed;
+		private int maskEnhanceGreen;
+		private int maskEnhanceBlue;
 
-		[StructLayout(LayoutKind.Explicit)]
-		public struct Mask
-		{
-			[FieldOffset(0)]
-			public byte reg;
+		// Control masks
+		private int controlNametableX;
+		private int controlNametableY;
+		private int controlIncrementMode;
+		private int controlPatternSprite;
+		private int controlPatternBackground;
+		private int controlSpriteSize;
+		private int controlSlaveMode; // unused
+		private int controlEnableNmi;
 
-			[FieldOffset(0)]
-			private byte bits;
-
-			public bool Grayscale
-			{
-				get => (bits & (1 << 0)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 0)) : (byte)(bits & ~(1 << 0));
-			}
-
-			public bool RenderBackgroundLeft
-			{
-				get => (bits & (1 << 1)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 1)) : (byte)(bits & ~(1 << 1));
-			}
-
-			public bool RenderSpritesLeft
-			{
-				get => (bits & (1 << 2)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 2)) : (byte)(bits & ~(1 << 2));
-			}
-
-			public bool RenderBackground
-			{
-				get => (bits & (1 << 3)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 3)) : (byte)(bits & ~(1 << 3));
-			}
-
-			public bool RenderSprites
-			{
-				get => (bits & (1 << 4)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 4)) : (byte)(bits & ~(1 << 4));
-			}
-
-			public bool EnhanceRed
-			{
-				get => (bits & (1 << 5)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 5)) : (byte)(bits & ~(1 << 5));
-			}
-
-			public bool EnhanceGreen
-			{
-				get => (bits & (1 << 6)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 6)) : (byte)(bits & ~(1 << 6));
-			}
-
-			public bool EnhanceBlue
-			{
-				get => (bits & (1 << 7)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 7)) : (byte)(bits & ~(1 << 7));
-			}
-		}
-
-		[StructLayout(LayoutKind.Explicit)]
-		public struct Control
-		{
-			[FieldOffset(0)]
-			public byte reg;
-
-			[FieldOffset(0)]
-			private byte bits;
-
-			public bool NametableX
-			{
-				get => (bits & (1 << 0)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 0)) : (byte)(bits & ~(1 << 0));
-			}
-
-			public bool NametableY
-			{
-				get => (bits & (1 << 1)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 1)) : (byte)(bits & ~(1 << 1));
-			}
-
-			public bool IncrementMode
-			{
-				get => (bits & (1 << 2)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 2)) : (byte)(bits & ~(1 << 2));
-			}
-
-			public bool PatternSprite
-			{
-				get => (bits & (1 << 3)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 3)) : (byte)(bits & ~(1 << 3));
-			}
-
-			public bool PatternBackground
-			{
-				get => (bits & (1 << 4)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 4)) : (byte)(bits & ~(1 << 4));
-			}
-
-			public bool SpriteSize
-			{
-				get => (bits & (1 << 5)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 5)) : (byte)(bits & ~(1 << 5));
-			}
-
-			public bool SlaveMode
-			{
-				get => (bits & (1 << 6)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 6)) : (byte)(bits & ~(1 << 6));
-			}
-
-			public bool EnableNMI
-			{
-				get => (bits & (1 << 7)) != 0;
-				set => bits = value ? (byte)(bits | (1 << 7)) : (byte)(bits & ~(1 << 7));
-			}
-		}
-
-		public struct LoopyRegister
-		{
-			public ushort reg = 0x0000;
-
-			public ushort CoarseX
-			{
-				get => (ushort)(reg & 0b00000_00000_00011111);
-				set => reg = (ushort)((reg & ~0b00000_00000_00011111) | (value & 0b00011111));
-			}
-
-			public ushort CoarseY
-			{
-				get => (ushort)((reg >> 5) & 0b00011111);
-				set => reg = (ushort)((reg & ~(0b00011111 << 5)) | ((value & 0b00011111) << 5));
-			}
-
-			public bool NametableX
-			{
-				get => (reg & (1 << 10)) != 0;
-				//set => reg = value ? (ushort)(reg | (1 << 10)) : (ushort)(reg & ~(1 << 10));
-				set => reg = (ushort)(value ? reg | (1 << 10) : reg & ~(1 << 10));
-			}
-
-			public bool NametableY
-			{
-				get => (reg & (1 << 11)) != 0;
-				//set => reg = value ? (ushort)(reg | (1 << 11)) : (ushort)(reg & ~(1 << 11));
-				set => reg = (ushort)(value ? reg | (1 << 11) : reg & ~(1 << 11));
-			}
-
-			public ushort FineY
-			{
-				get => (ushort)((reg >> 12) & 0b111);
-				set => reg = (ushort)((reg & ~(0b111 << 12)) | ((value & 0b111) << 12));
-			}
-
-			public LoopyRegister()
-			{
-
-			}
-		}
+		// Loopy register sections
+		// Credit to Loopy for working this out :D
+		private BitVector32.Section loopyCoarseX;
+		private BitVector32.Section loopyCoarseY;
+		private BitVector32.Section loopyNametableX;
+		private BitVector32.Section loopyNametableY;
+		private BitVector32.Section loopyFineY;
 
 		#endregion
-
-		Status statusRegister;
-		Mask maskRegister;
-		Control controlRegister;
 
 		byte addressLatch = 0x00;
 		byte ppuDataBuffer = 0x00;
 
-		LoopyRegister vramAddr;
-		LoopyRegister tramAddr;
 		byte fineX = 0x00;
 
 		// Background Bytes
@@ -248,7 +113,8 @@ namespace nes_emulator.src
 		ushort bgShifterAttribHI = 0x0000;
 
 		// Sprites stuff
-		private ObjectAttributeEntry[] oam = new ObjectAttributeEntry[64];
+		public byte[] oam = new byte[4 * 64];
+		private IntPtr pOAM;
 		byte oamAddr = 0x00;
 
 		private ObjectAttributeEntry[] spriteScanline = new ObjectAttributeEntry[8];
@@ -263,9 +129,9 @@ namespace nes_emulator.src
 		bool spriteZeroBeingRendered = false;
 
 		private Cartridge cartridge;
-		public byte[][] tblName = new byte[2][] { new byte[1024], new byte[1024] };
+		public byte[][] tblName = new byte[2][];
 		public byte[] tblPalette = new byte[32];
-		public byte[][] tblPattern = new byte[2][] { new byte[4096], new byte[4096] };
+		public byte[][] tblPattern = new byte[2][];
 
 		public bool frameCompleted = false;
 
@@ -287,10 +153,48 @@ namespace nes_emulator.src
 
 		public PPU() 
 		{
+			tblName[0] = new byte[1024];
+			tblName[1] = new byte[1024];
+			tblPattern[0] = new byte[4096];
+			tblPattern[1] = new byte[4096];
+
 			InitializePalette();
 
-			bufferNameTable[0] = new Pixel[256 * 240];
-			bufferNameTable[1] = new Pixel[256 * 240];
+			// Init sections definitions
+			statusUnused = BitVector32.CreateSection(31);
+			statusSpriteOverflow = BitVector32.CreateSection(1, statusUnused);
+			statusSpriteZeroHit = BitVector32.CreateSection(1, statusSpriteOverflow);
+			statusVerticalBlank = BitVector32.CreateSection(1, statusSpriteZeroHit);
+
+			maskGrayscale = BitVector32.CreateMask();
+			maskRenderBackgroundLeft = BitVector32.CreateMask(maskGrayscale);
+			maskRenderSpritesLeft = BitVector32.CreateMask(maskRenderBackgroundLeft);
+			maskRenderBackground = BitVector32.CreateMask(maskRenderSpritesLeft);
+			maskRenderSprites = BitVector32.CreateMask(maskRenderBackground);
+			maskEnhanceRed = BitVector32.CreateMask(maskRenderSprites);
+			maskEnhanceGreen = BitVector32.CreateMask(maskEnhanceRed);
+			maskEnhanceBlue = BitVector32.CreateMask(maskEnhanceGreen);
+
+			controlNametableX = BitVector32.CreateMask();
+			controlNametableY = BitVector32.CreateMask(controlNametableX);
+			controlIncrementMode = BitVector32.CreateMask(controlNametableY);
+			controlPatternSprite = BitVector32.CreateMask(controlIncrementMode);
+			controlPatternBackground = BitVector32.CreateMask(controlPatternSprite);
+			controlSpriteSize = BitVector32.CreateMask(controlPatternBackground);
+			controlSlaveMode = BitVector32.CreateMask(controlSpriteSize); // unused
+			controlEnableNmi = BitVector32.CreateMask(controlSlaveMode);
+
+			loopyCoarseX = BitVector32.CreateSection(31);
+			loopyCoarseY = BitVector32.CreateSection(31, loopyCoarseX);
+			loopyNametableX = BitVector32.CreateSection(1, loopyCoarseY);
+			loopyNametableY = BitVector32.CreateSection(1, loopyNametableX);
+			loopyFineY = BitVector32.CreateSection(7, loopyNametableY);
+
+			var handle = GCHandle.Alloc(oam, GCHandleType.Pinned);
+			pOAM = handle.AddrOfPinnedObject();
+
+			//bufferNameTable[0] = new Pixel[256 * 240];
+			//bufferNameTable[1] = new Pixel[256 * 240];
 
 			bufferPatternTable[0] = new Pixel[128 * 128];
 			bufferPatternTable[1] = new Pixel[128 * 128];
@@ -403,17 +307,35 @@ namespace nes_emulator.src
 			}
 		}
 
-		public unsafe byte* GetOAMPointer()
+		/// <summary>
+		/// Helper method to get part of a byte array interpreted as a struct
+		/// Overrall mechanic tolen in part from here:
+		/// https://stackoverflow.com/questions/2871/reading-a-c-c-data-structure-in-c-sharp-from-a-byte-array
+		/// But made it staticaly defined
+		/// We add the offset to the pointer to emulate accessor of a sObjectAttributeEntry[]
+		/// </summary>
+		/// <typeparam name="T"></typeparam>
+		/// <param name="bytes"></param>
+		/// <returns></returns>
+		ObjectAttributeEntry GetObjectAttribute(byte offset)
 		{
-			fixed(ObjectAttributeEntry* p = &oam[0])
-			{
-				return (byte*)p;
-			}
+			return (ObjectAttributeEntry)Marshal.PtrToStructure(pOAM + (offset * 4), typeof(ObjectAttributeEntry));
 		}
 
-		ref Pixel GetColourFromPaletteRam(byte palette, byte pixel)
+		/// <summary>
+		/// And the opposite operation
+		/// </summary>
+		/// <param name="offset"></param>
+		/// <returns></returns>
+		void GetObjectAttribute(byte offset, ObjectAttributeEntry entry)
 		{
-			return ref palleteScreen[PPURead((ushort)(0x3F00 + (palette << 2) + pixel)) & 0x3F];
+			Marshal.StructureToPtr(entry, pOAM + (offset * 4), false);
+		}
+
+
+		Pixel GetColourFromPaletteRam(byte palette, byte pixel)
+		{
+			return palleteScreen[PPURead((ushort)(0x3F00 + (palette << 2) + pixel)) & 0x3F];
 		}
 
 		#region Read and Write Stuff
@@ -427,13 +349,13 @@ namespace nes_emulator.src
 				switch (addr)
 				{
 					case 0x0000: // Control
-						data = controlRegister.reg;
+						data = (byte)control.Data;
 						break;
 					case 0x0001: // Mask
-						data = maskRegister.reg;
+						data = (byte)mask.Data;
 						break;
 					case 0x0002: // Status
-						data = statusRegister.reg;
+						data = (byte)status.Data;
 						break;
 					case 0x0003: // OAM Address
 						break;
@@ -456,29 +378,26 @@ namespace nes_emulator.src
 					case 0x0001: // Mask --  Not readable
 						break;
 					case 0x0002: // Status
-						data = (byte)((statusRegister.reg & 0xE0) | (ppuDataBuffer & 0x1F));
-						statusRegister.VerticalBlank = false;
+						data = (byte)((status.Data & 0xE0) | (ppuDataBuffer & 0x1F));
+						status[statusVerticalBlank] = 0;
 						addressLatch = 0;
 						break;
-					case 0x0003: // OAM Address
+					case 0x0003: // OAM Address -- Not readable
 						break;
 					case 0x0004: // OAM Data
-						unsafe
-						{
-							data = GetOAMPointer()[addr];
-						}
+						data = oam[oamAddr];
 						break;
-					case 0x0005: // Scroll
+					case 0x0005: // Scroll -- Not readable
 						break;
-					case 0x0006: // PPU Address
+					case 0x0006: // PPU Address -- Not readable
 						break;
 					case 0x0007: // PPU Data
 						data = ppuDataBuffer;
-						ppuDataBuffer = PPURead(vramAddr.reg);
+						ppuDataBuffer = PPURead((ushort)vram_addr.Data);
 
-						if (vramAddr.reg >= 0x3F00) data = ppuDataBuffer;
+						if (vram_addr.Data >= 0x3F00) data = ppuDataBuffer;
 
-						vramAddr.reg += (ushort)(controlRegister.IncrementMode ? 32 : 1);
+						vram_addr[allFirst15] += control[controlIncrementMode] ? 32 : 1;
 						break;
 				}
 			}
@@ -491,12 +410,12 @@ namespace nes_emulator.src
 			switch (addr)
 			{
 				case 0x0000: // Control
-					controlRegister.reg = data;
-					tramAddr.NametableX = controlRegister.NametableX;
-					tramAddr.NametableY = controlRegister.NametableY;
+					control[allFirst15] = data;
+					tram_addr[loopyNametableX] = control[controlNametableX] ? 1 : 0;
+					tram_addr[loopyNametableY] = control[controlNametableY] ? 1 : 0;
 					break;
 				case 0x0001: // Mask
-					maskRegister.reg = data;
+					mask[allFirst15] = data;
 					break;
 				case 0x0002: // Status
 					break;
@@ -504,41 +423,38 @@ namespace nes_emulator.src
 					oamAddr = data;
 					break;
 				case 0x0004: // OAM Data
-					unsafe
-					{
-						GetOAMPointer()[addr] = data;
-					}
+					oam[oamAddr] = data;
 					break;
 				case 0x0005: // Scroll
 					if(addressLatch == 0)
 					{
 						fineX = (byte)(data & 0x07);
-						tramAddr.CoarseX = (ushort)(data >> 3);
+						tram_addr[loopyCoarseX] = data >> 3;
 						addressLatch = 1;
 					}
 					else
 					{
-						tramAddr.FineY = (ushort)(data & 0x07);
-						tramAddr.CoarseY = (ushort)(data >> 3);
+						tram_addr[loopyFineY] = data & 0x07;
+						tram_addr[loopyCoarseY] = data >> 3;
 						addressLatch = 0;
 					}
 					break;
 				case 0x0006: // PPU Address
 					if (addressLatch == 0)
 					{
-						tramAddr.reg = (ushort)((ushort)((data & 0x3F) << 8) | (tramAddr.reg & 0x00FF));
+						tram_addr[allFirst15] = (ushort)((data & 0x3F) << 8) | (tram_addr.Data & 0x00FF);
 						addressLatch = 1;
 					}
 					else
 					{
-						tramAddr.reg = (ushort)((tramAddr.reg & 0xFF00) | data);
-						vramAddr = tramAddr;
+						tram_addr[allFirst15] = (tram_addr.Data & 0xFF00) | data;
+						vram_addr = tram_addr;
 						addressLatch = 0;
 					}
 					break;
 				case 0x0007: // PPU Data
-					PPUWrite(vramAddr.reg, data);
-					vramAddr.reg += (ushort)(controlRegister.IncrementMode ? 32 : 1);
+					PPUWrite((ushort)vram_addr.Data, data);
+					vram_addr[allFirst15] += control[controlIncrementMode] ? 32 : 1;
 					break;
 			}
 		}
@@ -596,8 +512,7 @@ namespace nes_emulator.src
 				if (addr == 0x0018) addr = 0x0008;
 				if (addr == 0x001C) addr = 0x000C;
 
-				//data = Convert.ToByte(tblPalette[addr] & (maskRegister.Grayscale ? 0x30 : 0x3F));
-				data = (byte)(tblPalette[addr] & (maskRegister.Grayscale ? (byte)0x30 : (byte)0x3F));
+				data = (byte)(tblPalette[addr] & (mask[maskGrayscale] ? 0x30 : 0x3F));
 
 			}
 
@@ -683,95 +598,108 @@ namespace nes_emulator.src
 			bgShifterPatternHI = 0x0000;
 			bgShifterAttribLO = 0x0000;
 			bgShifterAttribHI = 0x0000;
-			statusRegister.reg = 0x00;
-			maskRegister.reg = 0x00;
-			controlRegister.reg = 0x00;
-			vramAddr.reg = 0x0000;
-			tramAddr.reg = 0x0000;
+			status[allFirst15] = 0x00;
+			mask[allFirst15] = 0x00;
+			control[allFirst15] = 0x00;
+			vram_addr[allFirst15] = 0x0000;
+			tram_addr[allFirst15] = 0x0000;
 		}
 
 		public void Clock()
 		{
-			var IncrementScrollX = () =>
+			void IncrementScrollX()
 			{
-				if(maskRegister.RenderBackground || maskRegister.RenderSprites)
+				if(mask[maskRenderBackground] || mask[maskRenderSprites])
 				{
-					if(vramAddr.CoarseX == 31)
+					if(vram_addr[loopyCoarseX] == 31)
 					{
-						vramAddr.CoarseX = 0;
-						//vramAddr.NametableX = Convert.ToBoolean(~Convert.ToByte(vramAddr.NametableX));
-						vramAddr.NametableX = !vramAddr.NametableX;
+						vram_addr[loopyCoarseX] = 0;
+						vram_addr[loopyNametableX] = ~vram_addr[loopyNametableX];
 					}
 					else
 					{
-						vramAddr.CoarseX++;
+						vram_addr[loopyCoarseX]++;
 					}
 				}
-			};
+			}
 
-			var IncrementScrollY = () =>
+			void IncrementScrollY()
 			{
-				if (maskRegister.RenderBackground || maskRegister.RenderSprites)
+				if (mask[maskRenderBackground] || mask[maskRenderSprites])
 				{
-					if (vramAddr.FineY < 7)
+					if (vram_addr[loopyFineY] < 7)
 					{
-						vramAddr.FineY++;
+						vram_addr[loopyFineY]++;
 					}
 					else
 					{
-						vramAddr.FineY = 0;
+						// If we have gone beyond the height of a row, we need to
+						// increment the row, potentially wrapping into neighbouring
+						// vertical nametables. Dont forget however, the bottom two rows
+						// do not contain tile information. The coarse y offset is used
+						// to identify which row of the nametable we want, and the fine
+						// y offset is the specific "scanline"
 
-						if (vramAddr.CoarseY == 29)
+						// Reset fine y offset
+						vram_addr[loopyFineY] = 0;
+
+						// Check if we need to swap vertical nametable targets
+						if (vram_addr[loopyCoarseY] == 29)
 						{
-							vramAddr.CoarseY = 0;
+							// We do, so reset coarse y offset
+							vram_addr[loopyCoarseY] = 0;
 
-							//vramAddr.NametableY = Convert.ToBoolean(~Convert.ToByte(vramAddr.NametableY));
-							vramAddr.NametableY = !vramAddr.NametableY;
+							// And flip the target nametable bit
+							vram_addr[loopyNametableY] = ~vram_addr[loopyNametableY];
 						}
-						else if (vramAddr.CoarseY == 31)
+						else if (vram_addr[loopyCoarseY] == 31)
 						{
-							vramAddr.CoarseY = 0;
+							// In case the pointer is in the attribute memory, we
+							// just wrap around the current nametable
+							vram_addr[loopyCoarseY] = 0;
 						}
 						else
 						{
-							vramAddr.CoarseY++;
+							// None of the above boundary/wrapping conditions apply
+							// so just increment the coarse y offset
+							vram_addr[loopyCoarseY]++;
 						}
 					}
 				}
-			};
+			}
 
-			var TransferAddressX = () =>
+			void TransferAddressX()
 			{
 				// Only if rendering is enable
-				if(maskRegister.RenderBackground || maskRegister.RenderSprites)
+				if(mask[maskRenderBackground] || mask[maskRenderSprites])
 				{
-					vramAddr.NametableX = tramAddr.NametableX;
-					vramAddr.CoarseX = tramAddr.CoarseX;
+					vram_addr[loopyNametableX] = tram_addr[loopyNametableX];
+					vram_addr[loopyCoarseX] = tram_addr[loopyCoarseX];
 				}
-			};
+			}
 
-			var TransferAddressY = () =>
+			void TransferAddressY()
 			{
-				if(maskRegister.RenderBackground || maskRegister.RenderSprites)
+				if(mask[maskRenderBackground] || mask[maskRenderSprites])
 				{
-					vramAddr.FineY = tramAddr.FineY;
-					vramAddr.NametableY = tramAddr.NametableY;
-					vramAddr.CoarseY = tramAddr.CoarseY;
+					vram_addr[loopyFineY] = tram_addr[loopyFineY];
+					vram_addr[loopyNametableY] = tram_addr[loopyNametableY];
+					vram_addr[loopyCoarseY] = tram_addr[loopyCoarseY];
 				}
-			};
+			}
 
-			var LoadBackgroundShifters = () =>
+			void LoadBackgroundShifters()
 			{
 				bgShifterPatternLO = (ushort)((bgShifterPatternLO & 0xFF00) | bgNextTileLSB);
 				bgShifterPatternHI = (ushort)((bgShifterPatternHI & 0xFF00) | bgNextTileMSB);
 
-				bgShifterAttribLO = (ushort)((bgShifterAttribLO & 0xFF00) | (((bgNextTileAttrib & 0b01) != 0) ? 0xFF : 0x00));
-				bgShifterAttribHI = (ushort)((bgShifterAttribHI & 0xFF00) | (((bgNextTileAttrib & 0b10) != 0) ? 0xFF : 0x00));
-			};
+				bgShifterAttribLO = (ushort)((bgShifterAttribLO & 0xFF00) | ((bgNextTileAttrib & 0b01) != 0 ? 0xFF : 0x00));
+				bgShifterAttribHI = (ushort)((bgShifterAttribHI & 0xFF00) | ((bgNextTileAttrib & 0b10) != 0 ? 0xFF : 0x00));
+			}
 
-			var UpdateShifters = () =>
+			void UpdateShifters()
 			{
-				if(maskRegister.RenderBackground)
+				if(mask[maskRenderBackground])
 				{
 					bgShifterPatternLO <<= 1;
 					bgShifterPatternHI <<= 1;
@@ -780,7 +708,7 @@ namespace nes_emulator.src
 					bgShifterAttribHI <<= 1;
 				}
 
-				if(maskRegister.RenderSprites && cycle >= 1 && cycle < 258)
+				if(mask[maskRenderSprites] && cycle >= 1 && cycle < 258)
 				{
 					for(int i = 0; i < spriteCount; i++)
 					{
@@ -795,11 +723,11 @@ namespace nes_emulator.src
 						}
 					}
 				}
-			};
+			}
 
 			if(scanline >= -1 && scanline < 240)
 			{
-				if(scanline == 0 && cycle == 0)
+				if(scanline == 0 && cycle == 0 && (mask[maskRenderBackground] || mask[maskRenderSprites]))
 				{
 					// "Odd frame" cycle skip
 					cycle = 1;
@@ -807,11 +735,11 @@ namespace nes_emulator.src
 
 				if (scanline == -1 && cycle == 1)
 				{
-					statusRegister.VerticalBlank = false;
-					statusRegister.SpriteZeroHit = false;
-					statusRegister.SpriteOverflow = false;
+					status[statusVerticalBlank] = 0;
+					status[statusSpriteOverflow] = 0;
+					status[statusSpriteZeroHit] = 0;
 
-					for (int i = 0; i < spriteCount; i++)
+					for (int i = 0; i < 8; i++)
 					{
 						spriteShifterPatternLO[i] = 0;
 						spriteShifterPatternHI[i] = 0;
@@ -826,26 +754,28 @@ namespace nes_emulator.src
 					{
 						case 0:
 							LoadBackgroundShifters();
-							bgNextTileId = PPURead((ushort)(0x2000 | (vramAddr.reg & 0x0FFF)));
+
+							bgNextTileId = PPURead((ushort)(0x2000 | (vram_addr.Data & 0x0FFF)));
 							break;
 						case 2:
-							bgNextTileAttrib = PPURead((ushort)(0x23C0 | (Convert.ToByte(vramAddr.NametableY) << 11)
-								| (Convert.ToByte(vramAddr.NametableX) << 10)
-								| ((vramAddr.CoarseY >> 2) << 3)
-								| (vramAddr.CoarseX >> 2)));
-							if ((vramAddr.CoarseY & 0x02) != 0) bgNextTileAttrib >>= 4;
-							if ((vramAddr.CoarseX & 0x02) != 0) bgNextTileAttrib >>= 2;
+							bgNextTileAttrib = PPURead((ushort)(0x23C0 | (vram_addr[loopyNametableY] << 11)
+								| (vram_addr[loopyNametableX] << 10)
+								| ((vram_addr[loopyCoarseY] >> 2) << 3)
+								| (vram_addr[loopyCoarseX] >> 2)));
+
+							if ((vram_addr[loopyCoarseY] & 0x02) != 0) bgNextTileAttrib >>= 4;
+							if ((vram_addr[loopyCoarseX] & 0x02) != 0) bgNextTileAttrib >>= 2;
 							bgNextTileAttrib &= 0x03;
 							break;
 						case 4:
-							bgNextTileLSB = PPURead((ushort)((Convert.ToByte(controlRegister.PatternBackground) << 12)
-								+ ((ushort)bgNextTileId << 4)
-								+ (vramAddr.FineY) + 0));
+							bgNextTileLSB = PPURead((ushort)(((control[controlPatternBackground] ? 1 : 0) << 12)
+								+ (bgNextTileId << 4)
+								+ (vram_addr[loopyFineY]) + 0));
 							break;
 						case 6:
-							bgNextTileMSB = PPURead((ushort)((Convert.ToByte(controlRegister.PatternBackground) << 12)
-								+ ((ushort)bgNextTileId << 4)
-								+ (vramAddr.FineY) + 8));
+							bgNextTileMSB = PPURead((ushort)(((control[controlPatternBackground] ? 1 : 0) << 12)
+								+ (bgNextTileId << 4)
+								+ (vram_addr[loopyFineY]) + 8));
 							break;
 						case 7:
 							IncrementScrollX();
@@ -866,7 +796,7 @@ namespace nes_emulator.src
 
 				if(cycle == 338 || cycle == 340)
 				{
-					bgNextTileId = PPURead((ushort)(0x2000 | (vramAddr.reg & 0x0FFF)));
+					bgNextTileId = PPURead((ushort)(0x2000 | (vram_addr.Data & 0x0FFF)));
 				}
 
 				if(scanline == -1 && cycle >= 280 && cycle < 305)
@@ -879,52 +809,62 @@ namespace nes_emulator.src
 				// Sprite Evaluation
 				if(cycle == 257 && scanline >= 0)
 				{
-					unsafe
+					// Firstly, clear out the sprite memory. This memory is used to store the
+					// sprites to be rendered. It is not the OAM.
+					Array.Clear(spriteScanline, 0, spriteScanline.Length);
+
+					// The NES supports a maximum number of sprites per scanline. Nominally
+					// this is 8 or fewer sprites. This is why in some games you see sprites
+					// flicker or disappear when the scene gets busy.
+					spriteCount = 0;
+
+					// Secondly, clear out any residual information in sprite pattern shifters
+					for (byte i = 0; i < 8; i++)
 					{
-						//spriteScanline
-						spriteCount = 0;
-
-						byte nOAMEntry = 0;
-						spriteZeroHitPossible = false;
-						while(nOAMEntry < 64 && spriteCount < 9)
-						{
-							short diff = (short)((short)scanline - (short)oam[nOAMEntry].y);
-							if(diff >= 0 && diff < (controlRegister.SpriteSize ? 16 : 8))
-							{
-								if(spriteCount < 8)
-								{
-									if(nOAMEntry == 0)
-									{
-										spriteZeroHitPossible = true;
-									}
-
-									spriteScanline[spriteCount] = oam[nOAMEntry];
-									spriteCount++;
-								}
-							}
-
-							nOAMEntry++;
-						}
-						statusRegister.SpriteOverflow = (spriteCount > 8);
+						spriteShifterPatternLO[i] = 0;
+						spriteShifterPatternHI[i] = 0;
 					}
+
+					byte nOAMEntry = 0;
+					spriteZeroHitPossible = false;
+					while(nOAMEntry < 64 && spriteCount < 9)
+					{
+						short diff = (short)(scanline - GetObjectAttribute(nOAMEntry).y);
+						if(diff >= 0 && diff < (control[controlSpriteSize] ? 16 : 8))
+						{
+							if(spriteCount < 8)
+							{
+								if(nOAMEntry == 0)
+								{
+									spriteZeroHitPossible = true;
+								}
+
+								spriteScanline[spriteCount] = GetObjectAttribute(nOAMEntry);
+								spriteCount++;
+							}
+						}
+
+						nOAMEntry++;
+					}
+					status[statusSpriteOverflow] = (spriteCount > 8) ? 1 : 0;
 				}
 
 				if(cycle == 340)
 				{
-					for(byte i = 0; i < 8; i++)
+					for(byte i = 0; i < spriteCount; i++)
 					{
 						byte _spritePatternBitsLO, _spritePatternBitsHI;
 						ushort _spritePatternAddrLO, _spritePatternAddrHI;
 
-						if(!controlRegister.SpriteSize)
+						if(!control[controlSpriteSize])
 						{
 							// 8x8 Sprite Mode
-							if ((spriteScanline[i].attribute & 0x80) != 0)
+							if ((spriteScanline[i].attribute & 0x80) == 0)
 							{
 								// Sprite is not flipped vertically, i.e. normal
 								_spritePatternAddrLO =
 									(ushort)(
-												(Convert.ToByte(controlRegister.PatternSprite) << 12)
+												(control[controlPatternSprite] ? 1 : 0 << 12)
 												| (spriteScanline[i].id << 4)
 												| (scanline - spriteScanline[i].y)
 											);
@@ -934,7 +874,7 @@ namespace nes_emulator.src
 								// Sprite is flipped vertically, i.e. upside down
 								_spritePatternAddrLO =
 									(ushort)(
-												(Convert.ToByte(controlRegister.PatternSprite) << 12)
+												(control[controlPatternSprite] ? 1 : 0 << 12)
 												| (spriteScanline[i].id << 4)
 												| (7 - (scanline - spriteScanline[i].y))
 											);
@@ -976,7 +916,7 @@ namespace nes_emulator.src
 									_spritePatternAddrLO =
 										(ushort)(
 													((spriteScanline[i].id & 0x01) << 12)
-													| ((spriteScanline[i].id & 0xFE) << 4)
+													| (((spriteScanline[i].id & 0xFE) + 1) << 4)
 													| (7 - (scanline - spriteScanline[i].y) & 0x07)
 												);
 								}
@@ -986,7 +926,7 @@ namespace nes_emulator.src
 									_spritePatternAddrLO =
 										(ushort)(
 													((spriteScanline[i].id & 0x01) << 12)
-													| (((spriteScanline[i].id & 0xFE) + 1) << 4)
+													| ((spriteScanline[i].id & 0xFE) << 4)
 													| (7 - (scanline - spriteScanline[i].y) & 0x07)
 												);
 								}
@@ -994,6 +934,7 @@ namespace nes_emulator.src
 						}
 
 						_spritePatternAddrHI = (ushort)(_spritePatternAddrLO + 8);
+
 						_spritePatternBitsLO = PPURead(_spritePatternAddrLO);
 						_spritePatternBitsHI = PPURead(_spritePatternAddrHI);
 
@@ -1004,13 +945,13 @@ namespace nes_emulator.src
 							// so 0b11100000 becomes 0b00000111. It's very
 							// clever, and stolen completely from here:
 							// https://stackoverflow.com/a/2602885
-							var flipbyte = (byte b) => 
+							byte flipbyte(byte b)
 							{
-								b = (byte)((b & 0xF0) >> 4 | (b & 0x0F) << 4);
-								b = (byte)((b & 0xCC) >> 2 | (b & 0x33) << 2);
-								b = (byte)((b & 0xAA) >> 1 | (b & 0x55) << 1);
+								b = (byte)((byte)((b & 0xF0) >> 4) | (byte)((b & 0x0F) << 4));
+								b = (byte)((byte)((b & 0xCC) >> 2) | (byte)((b & 0x33) << 2));
+								b = (byte)((byte)((b & 0xAA) >> 1) | (byte)((b & 0x55) << 1));
 								return b;
-							};
+							}
 
 							// Flip patterns horizontally
 							_spritePatternBitsLO = flipbyte(_spritePatternBitsLO);
@@ -1035,8 +976,8 @@ namespace nes_emulator.src
 			{
 				if (scanline == 241 && cycle == 1)
 				{
-					statusRegister.VerticalBlank = true;
-					if (controlRegister.EnableNMI)
+					status[statusVerticalBlank] = 1;
+					if (control[controlEnableNmi])
 						nmi = true;
 				}
 			}
@@ -1045,20 +986,19 @@ namespace nes_emulator.src
 			// Draw Background
 			byte _bgPixel = 0x00;
 			byte _bgPalette = 0x00;
-			if(maskRegister.RenderBackground)
+			if(mask[maskRenderBackground])
 			{
 				ushort _bitMUX = (ushort)(0x8000 >> fineX);
 
-				byte _p0Pixel = Convert.ToByte((bgShifterPatternLO & _bitMUX) > 0);
-				byte _p1Pixel = Convert.ToByte((bgShifterPatternHI & _bitMUX) > 0);
+				byte _p0Pixel = (bgShifterPatternLO & _bitMUX) > 0 ? (byte)1 : (byte)0;
+				byte _p1Pixel = (bgShifterPatternHI & _bitMUX) > 0 ? (byte)1 : (byte)0;
 
 				_bgPixel = (byte)((_p1Pixel << 1) | _p0Pixel);
 
-				byte _bg0Palette = Convert.ToByte((bgShifterAttribLO & _bitMUX) > 0);
-				byte _bg1Palette = Convert.ToByte((bgShifterAttribHI & _bitMUX) > 0);
+				byte _bg0Palette = (bgShifterAttribLO & _bitMUX) > 0 ? (byte)1 : (byte)0;
+				byte _bg1Palette = (bgShifterAttribHI & _bitMUX) > 0 ? (byte)1 : (byte)0;
 
 				_bgPalette = (byte)((_bg1Palette << 1) | _bg0Palette);
-
 			}
 
 			// Draw Foreground/Sprites
@@ -1066,7 +1006,7 @@ namespace nes_emulator.src
 			byte _fgPalette = 0x00;
 			byte _fgPriority = 0x00;
 
-			if(maskRegister.RenderSprites)
+			if(mask[maskRenderSprites])
 			{
 				spriteZeroBeingRendered = false;
 
@@ -1074,12 +1014,12 @@ namespace nes_emulator.src
 				{
 					if (spriteScanline[i].x == 0)
 					{
-						byte _fgPixelLO = Convert.ToByte((spriteShifterPatternLO[i] & 0x80) > 0);
-						byte _fgPixelHI = Convert.ToByte((spriteShifterPatternHI[i] & 0x80) > 0);
+						byte _fgPixelLO = (spriteShifterPatternLO[i] & 0x80) > 0 ? (byte)1 : (byte)0;
+						byte _fgPixelHI = (spriteShifterPatternHI[i] & 0x80) > 0 ? (byte)1 : (byte)0;
 						_fgPixel = (byte)((_fgPixelHI << 1) | _fgPixelLO);
 
 						_fgPalette = (byte)((spriteScanline[i].attribute & 0x30) + 0x04);
-						_fgPriority = Convert.ToByte((spriteScanline[i].attribute & 0x20) == 0);
+						_fgPriority = (spriteScanline[i].attribute & 0x20) == 0 ? (byte)1 : (byte)0;
 
 						if(_fgPixel != 0)
 						{
@@ -1141,20 +1081,20 @@ namespace nes_emulator.src
 					// Sprite Zero Hit Detection
 					if(spriteZeroHitPossible && spriteZeroBeingRendered)
 					{
-						if(maskRegister.RenderBackground & maskRegister.RenderSprites)
+						if(mask[maskRenderBackground] & mask[maskRenderSprites])
 						{
-							if(!(maskRegister.RenderBackgroundLeft | maskRegister.RenderSpritesLeft))
+							if(!(mask[maskRenderBackgroundLeft] | mask[maskRenderSpritesLeft]))
 							{
 								if(cycle >= 9 && cycle < 258)
 								{
-									statusRegister.SpriteZeroHit = true;
+									status[statusSpriteZeroHit] = 1;
 								}
 							}
 							else
 							{
 								if (cycle >= 1 && cycle < 258)
 								{
-									statusRegister.SpriteZeroHit = true;
+									status[statusSpriteZeroHit] = 1;
 								}
 							}
 						}
@@ -1173,7 +1113,7 @@ namespace nes_emulator.src
 			{
 				cycle = 0;
 				scanline++;
-				if(scanline >=261)
+				if(scanline >= 261)
 				{
 					scanline = -1;
 					frameCompleted = true;
@@ -1197,7 +1137,7 @@ namespace nes_emulator.src
 			return ref bufferNameTable[i];
 		}
 
-		public ref Pixel[] GetPatternTable(byte i, byte palette)
+		public Pixel[] GetPatternTable(byte i, byte palette)
 		{
 			for(ushort nTileY = 0; nTileY < 16; nTileY++)
 			{
@@ -1229,7 +1169,7 @@ namespace nes_emulator.src
 			}
 
 			UploadBuffer(bufferPatternTableID[i], bufferPatternTable[i], 128, 128);
-			return ref bufferPatternTable[i];
+			return bufferPatternTable[i];
 		}
 
 		#endregion
