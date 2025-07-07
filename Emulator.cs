@@ -11,6 +11,8 @@ namespace nes_emulator
 {
 	public class Emulator : GameWindow
 	{
+		static Emulator Instance;
+
 		Bus nes;
 		Dictionary<ushort, string> mapAsm;
 		Cartridge cart;
@@ -25,8 +27,20 @@ namespace nes_emulator
 		public Emulator(int width, int height, string title) : base(GameWindowSettings.Default, new NativeWindowSettings() { ClientSize = (width, height), Title = title})
 		{
 			NESSetup();
+
+			Instance = this;
 		}
 
+		static float SoundOut(int channels, float globalTime, float timeStep)
+		{
+			if (channels == 0)
+			{
+				while (!Instance.nes.Clock()) { }
+				return (float)Instance.nes.audioSample;
+			}
+			else
+				return 0.0f;
+		}
 
 		private void NESSetup()
 		{
@@ -49,6 +63,10 @@ namespace nes_emulator
 			GL.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
 			controller = new ImGuiController(ClientSize.X, ClientSize.Y);
+
+			nes.SetSampleFrequency(44100);
+			SoundEngine.InitialiseAudio(44100, 1, 8, 512);
+			SoundEngine.SetUserSynthFunction(SoundOut);
 		}
 
 		protected override void OnResize(ResizeEventArgs e)
@@ -64,14 +82,43 @@ namespace nes_emulator
 		{
 			base.OnUpdateFrame(args);
 
-			if(KeyboardState.IsKeyDown(Keys.Escape))
+			UpdateWithAudio(args);
+			//UpdateWithoutAudio(args);
+		}
+
+		private void UpdateWithAudio(FrameEventArgs args)
+		{
+			if (nes.ppu2C02.readyToBuffer)
+			{
+				nes.ppu2C02.UploadBuffer(nes.ppu2C02.textureScreenID, nes.ppu2C02.bufferScreen, NESConfig.NES_WIDTH, NESConfig.NES_HEIGHT);
+				nes.ppu2C02.readyToBuffer = false;
+			}
+
+			if (KeyboardState.IsKeyDown(Keys.Escape))
 			{
 				Close();
 			}
 
 			ControllerUpdate();
 
-			if(emulationRun)
+			if (KeyboardState.IsKeyDown(Keys.L))
+				base.WindowState = base.WindowState == WindowState.Normal ? WindowState.Fullscreen : WindowState.Normal;
+			if (KeyboardState.IsKeyPressed(Keys.R))
+				nes.Reset();
+			if (KeyboardState.IsKeyPressed(Keys.P))
+				nSelectedPalette = (byte)((++nSelectedPalette) & 0x07);
+		}
+
+		private void UpdateWithoutAudio(FrameEventArgs args)
+		{
+			if (KeyboardState.IsKeyDown(Keys.Escape))
+			{
+				Close();
+			}
+
+			ControllerUpdate();
+
+			if (emulationRun)
 			{
 				if (residualTime > 0.0f)
 					residualTime -= (float)args.Time;
@@ -103,7 +150,7 @@ namespace nes_emulator
 
 			if (KeyboardState.IsKeyDown(Keys.L))
 				base.WindowState = base.WindowState == WindowState.Normal ? WindowState.Fullscreen : WindowState.Normal;
-			if(KeyboardState.IsKeyPressed(Keys.R))
+			if (KeyboardState.IsKeyPressed(Keys.R))
 				nes.Reset();
 			if (KeyboardState.IsKeyPressed(Keys.Space))
 				emulationRun = !emulationRun;
@@ -128,17 +175,17 @@ namespace nes_emulator
 
 			ImGui.End();
 
-			ImGui.Begin("Pattern tables");
+			//ImGui.Begin("Pattern tables");
 
-			ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), "Current palette index: " + nSelectedPalette);
+			//ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), "Current palette index: " + nSelectedPalette);
 
-			nes.ppu2C02.GetPatternTable(0, nSelectedPalette);
-			ImGui.Image(nes.ppu2C02.bufferPatternTableID[0], new Vector2(128 * 3, 128 * 3));
-			ImGui.SameLine();
-			nes.ppu2C02.GetPatternTable(1, nSelectedPalette);
-			ImGui.Image(nes.ppu2C02.bufferPatternTableID[1], new Vector2(128 * 3, 128 * 3));
+			//nes.ppu2C02.GetPatternTable(0, nSelectedPalette);
+			//ImGui.Image(nes.ppu2C02.bufferPatternTableID[0], new Vector2(128 * 3, 128 * 3));
+			//ImGui.SameLine();
+			//nes.ppu2C02.GetPatternTable(1, nSelectedPalette);
+			//ImGui.Image(nes.ppu2C02.bufferPatternTableID[1], new Vector2(128 * 3, 128 * 3));
 
-			ImGui.End();
+			//ImGui.End();
 
 			controller.Render();
 			ImGuiController.CheckGLError("End of frame");
@@ -313,6 +360,13 @@ namespace nes_emulator
 			base.OnMouseWheel(e);
 
 			controller.MouseScroll(e.Offset);
+		}
+
+		protected override void OnUnload()
+		{
+			base.OnUnload();
+
+			SoundEngine.DestroyAudio();
 		}
 	}
 }

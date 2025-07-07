@@ -12,7 +12,7 @@ namespace nes_emulator.src.Mappers
 		{
 		}
 
-		public override bool CPUMapRead(ushort addr, ref uint mapped_addr)
+		public override bool CPUMapRead(ushort addr, ref uint mapped_addr, ref byte data)
 		{
 			// if PRGROM is 16KB
 			//     CPU Address Bus          PRG ROM

@@ -33,6 +33,7 @@ namespace nes_emulator.src
 
 		public enum MIRROR
 		{
+			HARDWARE,
 			HORIZONTAL,
 			VERTICAL,
 			ONESCREEN_LO,
@@ -84,6 +85,7 @@ namespace nes_emulator.src
 
 					// "Discover" File Format
 					byte nFileType = 1;
+					if ((header.mapper2 & 0x0C) == 0x08) nFileType = 2;
 
 					if(nFileType == 0)
 					{
@@ -106,15 +108,32 @@ namespace nes_emulator.src
 
 					if(nFileType == 2)
 					{
+						nPRGBanks = (byte)(((header.prg_ram_size & 0x07) << 8) | header.prg_rom_chunks);
+						vPRGMemory = new List<byte>(nPRGBanks * 16384);
+						vPRGMemory = reader.ReadBytes(vPRGMemory.Capacity).ToList();
 
+						nCHRBanks = (byte)(((header.prg_ram_size & 0x38) << 8) | header.chr_rom_chunks);
+						vCHRMemory = new List<byte>(nCHRBanks * 8192);
+						vCHRMemory = reader.ReadBytes(vCHRMemory.Capacity).ToList();
+					}
+
+					if(vCHRMemory?.Count == 0)
+					{
+						if (nCHRBanks == 0)
+							vCHRMemory.AddRange(Enumerable.Repeat((byte)0, 8192));
+						else
+							vCHRMemory.AddRange(Enumerable.Repeat((byte)0, nCHRBanks * 8192));
 					}
 
 					// Load appropriate mapper
 					switch(nMapperID)
 					{
-						case 0:
-							mapper = new Mapper000(nPRGBanks, nCHRBanks);
-							break;
+						case 0:	mapper = new Mapper000(nPRGBanks, nCHRBanks); break;
+						case 1: mapper = new Mapper001(nPRGBanks, nCHRBanks); break;
+						case 2: mapper = new Mapper002(nPRGBanks, nCHRBanks); break;
+						case 3: mapper = new Mapper003(nPRGBanks, nCHRBanks); break;
+						case 4: mapper = new Mapper004(nPRGBanks, nCHRBanks); break;
+						default: throw new NotImplementedException("The cartridge uses an unsupported type of mapper!");
 					}
 
 					imageValid = true;
@@ -131,9 +150,19 @@ namespace nes_emulator.src
 		{
 			uint mapped_addr = 0;
 
-			if(mapper.CPUMapRead(addr, ref mapped_addr))
+			if(mapper.CPUMapRead(addr, ref mapped_addr, ref data))
 			{
-				data = vPRGMemory[Convert.ToInt32(mapped_addr)];
+				if(mapped_addr == 0xFFFFFFFF)
+				{
+					// Mapper has actually set the data value, for example cartridge based RAM
+					return true;
+				}
+				else
+				{
+					// Mapper has produced an offset into cartridge bank memory
+					data = vPRGMemory[Convert.ToInt32(mapped_addr)];
+				}
+
 				return true;
 			}
 			else
@@ -146,7 +175,17 @@ namespace nes_emulator.src
 
 			if (mapper.CPUMapWrite(addr, ref mapped_addr, data))
 			{
-				vPRGMemory[Convert.ToInt32(mapped_addr)] = data;
+				if(mapped_addr == 0xFFFFFFFF)
+				{
+					// Mapper has actually set the data value, for example cartridge based RAM
+					return true;
+				}
+				else
+				{
+					// Mapper has produced an offset into cartridge bank memory
+					vPRGMemory[Convert.ToInt32(mapped_addr)] = data;
+				}
+
 				return true;
 			}
 			else
@@ -185,6 +224,24 @@ namespace nes_emulator.src
 			// but does reset the mapper.
 			if (mapper != null)
 				mapper.Reset();
+		}
+
+		public MIRROR GetMirror()
+		{
+			MIRROR m = mapper.GetMirror();
+			if(m == MIRROR.HARDWARE)
+			{
+				return mirror;
+			}
+			else
+			{
+				return m;
+			}
+		}
+
+		public Mapper GetMapper()
+		{
+			return mapper;
 		}
 	}
 }

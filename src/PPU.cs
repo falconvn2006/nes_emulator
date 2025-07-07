@@ -1,13 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.ComponentModel.DataAnnotations;
-using System.IO.Compression;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 
 // Rendering Stuff
 using ImGuiNET;
@@ -15,7 +11,6 @@ using OpenTK.Graphics.OpenGL4;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
-using static nes_emulator.src.PPU;
 
 namespace nes_emulator.src
 {
@@ -137,6 +132,7 @@ namespace nes_emulator.src
 
 		private short scanline = 0;
 		private short cycle = 0;
+		private bool oddFrame = false;
 		public bool nmi;
 
 		private Pixel[] palleteScreen = new Pixel[0x40];
@@ -149,7 +145,8 @@ namespace nes_emulator.src
 
 		// Rendering stuff
 		public int textureScreenID;
-		private Pixel[] bufferScreen;
+		public Pixel[] bufferScreen;
+		public bool readyToBuffer = false;
 
 		public PPU() 
 		{
@@ -294,7 +291,7 @@ namespace nes_emulator.src
 			GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
 		}
 
-		private void UploadBuffer(int textureID, Pixel[] buffer, int width, int height)
+		public void UploadBuffer(int textureID, Pixel[] buffer, int width, int height)
 		{
 			GL.BindTexture(TextureTarget.Texture2D, textureID);
 			unsafe
@@ -590,6 +587,7 @@ namespace nes_emulator.src
 			ppuDataBuffer = 0x00;
 			scanline = 0;
 			cycle = 0;
+			oddFrame = false;
 			bgNextTileId = 0x00;
 			bgNextTileAttrib = 0x00;
 			bgNextTileLSB = 0x00;
@@ -727,7 +725,7 @@ namespace nes_emulator.src
 
 			if(scanline >= -1 && scanline < 240)
 			{
-				if(scanline == 0 && cycle == 0 && (mask[maskRenderBackground] || mask[maskRenderSprites]))
+				if(scanline == 0 && cycle == 0 && oddFrame && (mask[maskRenderBackground] || mask[maskRenderSprites]))
 				{
 					// "Odd frame" cycle skip
 					cycle = 1;
@@ -830,7 +828,7 @@ namespace nes_emulator.src
 					while(nOAMEntry < 64 && spriteCount < 9)
 					{
 						short diff = (short)(scanline - GetObjectAttribute(nOAMEntry).y);
-						if(diff >= 0 && diff < (control[controlSpriteSize] ? 16 : 8))
+						if(diff >= 0 && diff < (control[controlSpriteSize] ? 16 : 8) && spriteCount < 8)
 						{
 							if(spriteCount < 8)
 							{
@@ -840,13 +838,13 @@ namespace nes_emulator.src
 								}
 
 								spriteScanline[spriteCount] = GetObjectAttribute(nOAMEntry);
-								spriteCount++;
 							}
+							spriteCount++;
 						}
 
 						nOAMEntry++;
 					}
-					status[statusSpriteOverflow] = (spriteCount > 8) ? 1 : 0;
+					status[statusSpriteOverflow] = (spriteCount >= 8) ? 1 : 0;
 				}
 
 				if(cycle == 340)
@@ -988,17 +986,20 @@ namespace nes_emulator.src
 			byte _bgPalette = 0x00;
 			if(mask[maskRenderBackground])
 			{
-				ushort _bitMUX = (ushort)(0x8000 >> fineX);
+				if (mask[maskRenderBackgroundLeft] || (cycle >= 9))
+				{
+					ushort _bitMUX = (ushort)(0x8000 >> fineX);
 
-				byte _p0Pixel = (bgShifterPatternLO & _bitMUX) > 0 ? (byte)1 : (byte)0;
-				byte _p1Pixel = (bgShifterPatternHI & _bitMUX) > 0 ? (byte)1 : (byte)0;
+					byte _p0Pixel = (bgShifterPatternLO & _bitMUX) > 0 ? (byte)1 : (byte)0;
+					byte _p1Pixel = (bgShifterPatternHI & _bitMUX) > 0 ? (byte)1 : (byte)0;
 
-				_bgPixel = (byte)((_p1Pixel << 1) | _p0Pixel);
+					_bgPixel = (byte)((_p1Pixel << 1) | _p0Pixel);
 
-				byte _bg0Palette = (bgShifterAttribLO & _bitMUX) > 0 ? (byte)1 : (byte)0;
-				byte _bg1Palette = (bgShifterAttribHI & _bitMUX) > 0 ? (byte)1 : (byte)0;
+					byte _bg0Palette = (bgShifterAttribLO & _bitMUX) > 0 ? (byte)1 : (byte)0;
+					byte _bg1Palette = (bgShifterAttribHI & _bitMUX) > 0 ? (byte)1 : (byte)0;
 
-				_bgPalette = (byte)((_bg1Palette << 1) | _bg0Palette);
+					_bgPalette = (byte)((_bg1Palette << 1) | _bg0Palette);
+				}
 			}
 
 			// Draw Foreground/Sprites
@@ -1008,25 +1009,28 @@ namespace nes_emulator.src
 
 			if(mask[maskRenderSprites])
 			{
-				spriteZeroBeingRendered = false;
-
-				for(int i = 0; i < spriteCount; i++)
+				if (mask[maskRenderSprites] || (cycle >= 9))
 				{
-					if (spriteScanline[i].x == 0)
+					spriteZeroBeingRendered = false;
+
+					for (int i = 0; i < spriteCount; i++)
 					{
-						byte _fgPixelLO = (spriteShifterPatternLO[i] & 0x80) > 0 ? (byte)1 : (byte)0;
-						byte _fgPixelHI = (spriteShifterPatternHI[i] & 0x80) > 0 ? (byte)1 : (byte)0;
-						_fgPixel = (byte)((_fgPixelHI << 1) | _fgPixelLO);
-
-						_fgPalette = (byte)((spriteScanline[i].attribute & 0x30) + 0x04);
-						_fgPriority = (spriteScanline[i].attribute & 0x20) == 0 ? (byte)1 : (byte)0;
-
-						if(_fgPixel != 0)
+						if (spriteScanline[i].x == 0)
 						{
-							if(i == 0) // Is this sprite zero?
-								spriteZeroBeingRendered = true;
+							byte _fgPixelLO = (spriteShifterPatternLO[i] & 0x80) > 0 ? (byte)1 : (byte)0;
+							byte _fgPixelHI = (spriteShifterPatternHI[i] & 0x80) > 0 ? (byte)1 : (byte)0;
+							_fgPixel = (byte)((_fgPixelHI << 1) | _fgPixelLO);
 
-							break;
+							_fgPalette = (byte)((spriteScanline[i].attribute & 0x30) + 0x04);
+							_fgPriority = (spriteScanline[i].attribute & 0x20) == 0 ? (byte)1 : (byte)0;
+
+							if (_fgPixel != 0)
+							{
+								if (i == 0) // Is this sprite zero?
+									spriteZeroBeingRendered = true;
+
+								break;
+							}
 						}
 					}
 				}
@@ -1108,6 +1112,13 @@ namespace nes_emulator.src
 			}
 
 			cycle++;
+			if (mask[maskRenderBackground] || mask[maskRenderSprites])
+			{
+				if(cycle == 260 && scanline < 240)
+				{
+					cartridge.GetMapper().Scanline();
+				}
+			}
 
 			if(cycle >= 341)
 			{
@@ -1117,8 +1128,9 @@ namespace nes_emulator.src
 				{
 					scanline = -1;
 					frameCompleted = true;
+					oddFrame = !oddFrame;
 
-					UploadBuffer(textureScreenID, bufferScreen, NESConfig.NES_WIDTH, NESConfig.NES_HEIGHT);
+					readyToBuffer = true;
 				}
 			}
 		}

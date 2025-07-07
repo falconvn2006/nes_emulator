@@ -19,13 +19,22 @@ namespace nes_emulator.src.Mappers
             Reset();
         }
 
-        public abstract bool CPUMapRead(ushort addr, ref uint mapped_addr);
+        public abstract bool CPUMapRead(ushort addr, ref uint mapped_addr, ref byte data);
         public abstract bool CPUMapWrite(ushort addr, ref uint mapped_addr, byte data);
         public abstract bool PPUMapRead(ushort addr, ref uint mapped_addr);
         public abstract bool PPUMapWrite(ushort addr, ref uint mapped_addr);
-        public virtual void Reset()
-        {
+        public virtual void Reset() { }
 
+        // IRQ Interface
+        public virtual bool IRQState() { return false; }
+        public virtual void IRQClear() { }
+
+        public virtual Cartridge.MIRROR GetMirror()
+        {
+            return Cartridge.MIRROR.HARDWARE;
         }
+
+        // Scanline counting
+        public virtual void Scanline() { }
     }
 }
