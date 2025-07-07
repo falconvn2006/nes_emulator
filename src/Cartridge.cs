@@ -51,7 +51,7 @@ namespace nes_emulator.src
 
 		private Mapper mapper;
 
-		public MIRROR mirror = MIRROR.HORIZONTAL;
+		private MIRROR mirror = MIRROR.HORIZONTAL;
 
 		private bool imageValid;
 

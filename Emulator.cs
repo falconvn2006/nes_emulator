@@ -211,6 +211,7 @@ namespace nes_emulator
 			ImGuiCPUDebug();
 			ImGuiInstructsDebug();
 			ImGuiSpriteDebug();
+			//ImGui.ShowDemoWindow();
 		}
 
 		private void ImGuiRamDebug()

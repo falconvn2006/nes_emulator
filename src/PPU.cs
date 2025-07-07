@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 // Rendering Stuff
@@ -95,6 +93,8 @@ namespace nes_emulator.src
 
 		byte fineX = 0x00;
 
+		// Background Rendering =======================
+
 		// Background Bytes
 		byte bgNextTileId = 0x00;
 		byte bgNextTileAttrib = 0x00;
@@ -107,7 +107,7 @@ namespace nes_emulator.src
 		ushort bgShifterAttribLO = 0x0000;
 		ushort bgShifterAttribHI = 0x0000;
 
-		// Sprites stuff
+		// Foreground Rendering =========================
 		public byte[] oam = new byte[4 * 64];
 		private IntPtr pOAM;
 		byte oamAddr = 0x00;
@@ -123,13 +123,15 @@ namespace nes_emulator.src
 		bool spriteZeroHitPossible = false;
 		bool spriteZeroBeingRendered = false;
 
-		private Cartridge cartridge;
+
+		// Memory stuff
 		public byte[][] tblName = new byte[2][];
-		public byte[] tblPalette = new byte[32];
 		public byte[][] tblPattern = new byte[2][];
+		public byte[] tblPalette = new byte[32];
 
 		public bool frameCompleted = false;
 
+		// Pixel "dot" position information
 		private short scanline = 0;
 		private short cycle = 0;
 		private bool oddFrame = false;
@@ -143,10 +145,12 @@ namespace nes_emulator.src
 		public int[] bufferPatternTableID = new int[2];
 		private Pixel[][] bufferPatternTable = new Pixel[2][];
 
-		// Rendering stuff
+		// Final rendering stuff
 		public int textureScreenID;
 		public Pixel[] bufferScreen;
 		public bool readyToBuffer = false;
+
+		private Cartridge cartridge;
 
 		public PPU() 
 		{
@@ -156,42 +160,13 @@ namespace nes_emulator.src
 			tblPattern[1] = new byte[4096];
 
 			InitializePalette();
-
-			// Init sections definitions
-			statusUnused = BitVector32.CreateSection(31);
-			statusSpriteOverflow = BitVector32.CreateSection(1, statusUnused);
-			statusSpriteZeroHit = BitVector32.CreateSection(1, statusSpriteOverflow);
-			statusVerticalBlank = BitVector32.CreateSection(1, statusSpriteZeroHit);
-
-			maskGrayscale = BitVector32.CreateMask();
-			maskRenderBackgroundLeft = BitVector32.CreateMask(maskGrayscale);
-			maskRenderSpritesLeft = BitVector32.CreateMask(maskRenderBackgroundLeft);
-			maskRenderBackground = BitVector32.CreateMask(maskRenderSpritesLeft);
-			maskRenderSprites = BitVector32.CreateMask(maskRenderBackground);
-			maskEnhanceRed = BitVector32.CreateMask(maskRenderSprites);
-			maskEnhanceGreen = BitVector32.CreateMask(maskEnhanceRed);
-			maskEnhanceBlue = BitVector32.CreateMask(maskEnhanceGreen);
-
-			controlNametableX = BitVector32.CreateMask();
-			controlNametableY = BitVector32.CreateMask(controlNametableX);
-			controlIncrementMode = BitVector32.CreateMask(controlNametableY);
-			controlPatternSprite = BitVector32.CreateMask(controlIncrementMode);
-			controlPatternBackground = BitVector32.CreateMask(controlPatternSprite);
-			controlSpriteSize = BitVector32.CreateMask(controlPatternBackground);
-			controlSlaveMode = BitVector32.CreateMask(controlSpriteSize); // unused
-			controlEnableNmi = BitVector32.CreateMask(controlSlaveMode);
-
-			loopyCoarseX = BitVector32.CreateSection(31);
-			loopyCoarseY = BitVector32.CreateSection(31, loopyCoarseX);
-			loopyNametableX = BitVector32.CreateSection(1, loopyCoarseY);
-			loopyNametableY = BitVector32.CreateSection(1, loopyNametableX);
-			loopyFineY = BitVector32.CreateSection(7, loopyNametableY);
+			InitializeBits();
 
 			var handle = GCHandle.Alloc(oam, GCHandleType.Pinned);
 			pOAM = handle.AddrOfPinnedObject();
 
-			//bufferNameTable[0] = new Pixel[256 * 240];
-			//bufferNameTable[1] = new Pixel[256 * 240];
+			bufferNameTable[0] = new Pixel[256 * 240];
+			bufferNameTable[1] = new Pixel[256 * 240];
 
 			bufferPatternTable[0] = new Pixel[128 * 128];
 			bufferPatternTable[1] = new Pixel[128 * 128];
@@ -277,6 +252,39 @@ namespace nes_emulator.src
 			palleteScreen[0x3D] = new Pixel(160, 162, 160);
 			palleteScreen[0x3E] = new Pixel(0, 0, 0);
 			palleteScreen[0x3F] = new Pixel(0, 0, 0);
+		}
+
+		private void InitializeBits()
+		{
+			// Init sections definitions
+			statusUnused = BitVector32.CreateSection(31);
+			statusSpriteOverflow = BitVector32.CreateSection(1, statusUnused);
+			statusSpriteZeroHit = BitVector32.CreateSection(1, statusSpriteOverflow);
+			statusVerticalBlank = BitVector32.CreateSection(1, statusSpriteZeroHit);
+
+			maskGrayscale = BitVector32.CreateMask();
+			maskRenderBackgroundLeft = BitVector32.CreateMask(maskGrayscale);
+			maskRenderSpritesLeft = BitVector32.CreateMask(maskRenderBackgroundLeft);
+			maskRenderBackground = BitVector32.CreateMask(maskRenderSpritesLeft);
+			maskRenderSprites = BitVector32.CreateMask(maskRenderBackground);
+			maskEnhanceRed = BitVector32.CreateMask(maskRenderSprites);
+			maskEnhanceGreen = BitVector32.CreateMask(maskEnhanceRed);
+			maskEnhanceBlue = BitVector32.CreateMask(maskEnhanceGreen);
+
+			controlNametableX = BitVector32.CreateMask();
+			controlNametableY = BitVector32.CreateMask(controlNametableX);
+			controlIncrementMode = BitVector32.CreateMask(controlNametableY);
+			controlPatternSprite = BitVector32.CreateMask(controlIncrementMode);
+			controlPatternBackground = BitVector32.CreateMask(controlPatternSprite);
+			controlSpriteSize = BitVector32.CreateMask(controlPatternBackground);
+			controlSlaveMode = BitVector32.CreateMask(controlSpriteSize); // unused
+			controlEnableNmi = BitVector32.CreateMask(controlSlaveMode);
+
+			loopyCoarseX = BitVector32.CreateSection(31);
+			loopyCoarseY = BitVector32.CreateSection(31, loopyCoarseX);
+			loopyNametableX = BitVector32.CreateSection(1, loopyCoarseY);
+			loopyNametableY = BitVector32.CreateSection(1, loopyNametableX);
+			loopyFineY = BitVector32.CreateSection(7, loopyNametableY);
 		}
 
 		public void CreateTexture(ref int textureID, int width, int height, out Pixel[] buffer)
@@ -475,7 +483,7 @@ namespace nes_emulator.src
 			{
 				addr &= 0x0FFF;
 
-				if (cartridge.mirror == Cartridge.MIRROR.VERTICAL)
+				if (cartridge.GetMirror() == Cartridge.MIRROR.VERTICAL)
 				{
 					// Vertical
 					if (addr >= 0x0000 && addr <= 0x03FF)
@@ -487,7 +495,7 @@ namespace nes_emulator.src
 					if (addr >= 0x0C00 && addr <= 0x0FFF)
 						data = tblName[1][addr & 0x03FF];
 				}
-				else if(cartridge.mirror == Cartridge.MIRROR.HORIZONTAL)
+				else if(cartridge.GetMirror() == Cartridge.MIRROR.HORIZONTAL)
 				{
 					// Horizontal
 					if (addr >= 0x0000 && addr <= 0x03FF)
@@ -533,7 +541,7 @@ namespace nes_emulator.src
 			{
 				addr &= 0x0FFF;
 
-				if (cartridge.mirror == Cartridge.MIRROR.VERTICAL)
+				if (cartridge.GetMirror() == Cartridge.MIRROR.VERTICAL)
 				{
 					// Vertical
 					if (addr >= 0x0000 && addr <= 0x03FF)
@@ -545,7 +553,7 @@ namespace nes_emulator.src
 					if (addr >= 0x0C00 && addr <= 0x0FFF)
 						tblName[1][addr & 0x03FF] = data;
 				}
-				else if (cartridge.mirror == Cartridge.MIRROR.HORIZONTAL)
+				else if (cartridge.GetMirror() == Cartridge.MIRROR.HORIZONTAL)
 				{
 					// Horizontal
 					if (addr >= 0x0000 && addr <= 0x03FF)
@@ -970,7 +978,7 @@ namespace nes_emulator.src
 				// Post Render Scanline - Do Nothing!
 			}
 
-			if(scanline  >= 241 && scanline < 261)
+			if(scanline >= 241 && scanline < 261)
 			{
 				if (scanline == 241 && cycle == 1)
 				{
@@ -1021,7 +1029,7 @@ namespace nes_emulator.src
 							byte _fgPixelHI = (spriteShifterPatternHI[i] & 0x80) > 0 ? (byte)1 : (byte)0;
 							_fgPixel = (byte)((_fgPixelHI << 1) | _fgPixelLO);
 
-							_fgPalette = (byte)((spriteScanline[i].attribute & 0x30) + 0x04);
+							_fgPalette = (byte)((spriteScanline[i].attribute & 0x03) + 0x04);
 							_fgPriority = (spriteScanline[i].attribute & 0x20) == 0 ? (byte)1 : (byte)0;
 
 							if (_fgPixel != 0)

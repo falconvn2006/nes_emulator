@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Windows.Input;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -9,7 +10,7 @@ namespace nes_emulator
 {
 	public class GUIProgram
 	{
-		static unsafe void Main(string[] args)
+		static void Main(string[] args)
 		{
 			using (Emulator emulator = new Emulator(1600, 1200, "NES Emulator"))
 			{
