@@ -6,10 +6,11 @@ using OpenTK.Windowing.GraphicsLibraryFramework;
 
 using nes_emulator.src;
 using System.Numerics;
+using nes_emulator.src.ImGuiHelper;
 
 namespace nes_emulator
 {
-	public class Emulator : GameWindow
+    public class Emulator : GameWindow
 	{
 		static Emulator Instance;
 
@@ -22,7 +23,10 @@ namespace nes_emulator
 
 		byte nSelectedPalette = 0x00;
 
+		private int nesWindowMultiplier = 3;
+
 		ImGuiController controller;
+		ImGuiFileBrowser fileBrowser;
 
 		public Emulator(int width, int height, string title) : base(GameWindowSettings.Default, new NativeWindowSettings() { ClientSize = (width, height), Title = title})
 		{
@@ -47,7 +51,7 @@ namespace nes_emulator
 			nes = new Bus();
 			mapAsm = new Dictionary<ushort, string>();
 
-			cart = new Cartridge(NESConfig.NES_CARTRIDGE_FILE);
+			cart = new Cartridge(NESConfig.DEFAULT_NES_CARTRIDGE_FILE);
 
 			nes.InsertCartridge(ref cart);
 
@@ -63,6 +67,9 @@ namespace nes_emulator
 			GL.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
 			controller = new ImGuiController(ClientSize.X, ClientSize.Y);
+			fileBrowser = new ImGuiFileBrowser(ImGuiFileBrowserFlags.EditPathString);
+
+			fileBrowser.SetTypeFilters([".nes"]);
 
 			nes.SetSampleFrequency(44100);
 			SoundEngine.InitialiseAudio(44100, 1, 8, 512);
@@ -84,6 +91,24 @@ namespace nes_emulator
 
 			UpdateWithAudio(args);
 			//UpdateWithoutAudio(args);
+
+			if(fileBrowser.HasSelected())
+			{
+				//Console.WriteLine("Selected the file: " + fileBrowser.GetSelected().ToString());
+				//fileBrowser.ClearSelected();
+
+				nes.Reset();
+
+				cart = new Cartridge(fileBrowser.GetSelected().ToString());
+				nes.InsertCartridge(ref cart);
+				fileBrowser.ClearSelected();
+
+				mapAsm = nes.cpu6502.Disassemble(0x0000, 0xFFFF);
+
+				nes.Reset();
+
+				fileBrowser.Close();
+			}
 		}
 
 		private void UpdateWithAudio(FrameEventArgs args)
@@ -169,23 +194,42 @@ namespace nes_emulator
 
 			ImGuiDebug();
 
-			ImGui.Begin("NES View");
+			ImGui.Begin("NES View", ImGuiWindowFlags.MenuBar);
 
-			ImGui.Image(nes.ppu2C02.textureScreenID, new Vector2(NESConfig.NES_WIDTH * 3, NESConfig.NES_HEIGHT * 3));
+			if(ImGui.BeginMenuBar())
+			{
+				if (ImGui.BeginMenu("File"))
+				{
+					if (ImGui.MenuItem("Open Game"))
+					{
+						fileBrowser.Open();
+					}
+
+					if(ImGui.MenuItem("Save State"))
+					{
+						
+					}
+
+					if(ImGui.MenuItem("Load State"))
+					{
+
+					}
+
+					if (ImGui.MenuItem("Exit"))
+					{
+						Close();
+					}
+
+					ImGui.EndMenu();
+				}
+
+				ImGui.EndMenuBar();
+			}
+
+			ImGui.Image(nes.ppu2C02.textureScreenID, new Vector2(NESConfig.NES_WIDTH * nesWindowMultiplier, NESConfig.NES_HEIGHT * nesWindowMultiplier));
 
 			ImGui.End();
-
-			//ImGui.Begin("Pattern tables");
-
-			//ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), "Current palette index: " + nSelectedPalette);
-
-			//nes.ppu2C02.GetPatternTable(0, nSelectedPalette);
-			//ImGui.Image(nes.ppu2C02.bufferPatternTableID[0], new Vector2(128 * 3, 128 * 3));
-			//ImGui.SameLine();
-			//nes.ppu2C02.GetPatternTable(1, nSelectedPalette);
-			//ImGui.Image(nes.ppu2C02.bufferPatternTableID[1], new Vector2(128 * 3, 128 * 3));
-
-			//ImGui.End();
+			fileBrowser.Display();
 
 			controller.Render();
 			ImGuiController.CheckGLError("End of frame");
@@ -211,6 +255,7 @@ namespace nes_emulator
 			ImGuiCPUDebug();
 			ImGuiInstructsDebug();
 			ImGuiSpriteDebug();
+			ImGuiPatternTableDebug();
 			//ImGui.ShowDemoWindow();
 		}
 
@@ -345,6 +390,21 @@ namespace nes_emulator
 					+ " AT: " + nes.ppu2C02.oam[i*4+2].ToString("X2");
 				ImGui.Text(s);
 			}
+
+			ImGui.End();
+		}
+
+		private void ImGuiPatternTableDebug()
+		{
+			ImGui.Begin("Pattern tables");
+
+			ImGui.TextColored(new Vector4(0.0f, 1.87f, 1.0f, 1.0f), "Current palette index: " + nSelectedPalette);
+
+			nes.ppu2C02.GetPatternTable(0, nSelectedPalette);
+			ImGui.Image(nes.ppu2C02.bufferPatternTableID[0], new Vector2(128 * 3, 128 * 3));
+			ImGui.SameLine();
+			nes.ppu2C02.GetPatternTable(1, nSelectedPalette);
+			ImGui.Image(nes.ppu2C02.bufferPatternTableID[1], new Vector2(128 * 3, 128 * 3));
 
 			ImGui.End();
 		}

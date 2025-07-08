@@ -117,6 +117,9 @@ namespace nes_emulator.src
 
         public bool Clock()
         {
+            if (!cartridge.ImageValid)
+                return true;
+
             ppu2C02.Clock();
 
             apu2A03.Clock();

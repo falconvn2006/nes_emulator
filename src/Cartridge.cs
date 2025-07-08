@@ -53,13 +53,13 @@ namespace nes_emulator.src
 
 		private MIRROR mirror = MIRROR.HORIZONTAL;
 
-		private bool imageValid;
+		public bool ImageValid { get; set; }
 
 		public Cartridge(string filename)
 		{
 			NESHeader header;
 
-			imageValid = false;
+			ImageValid = false;
 
 			if (File.Exists(filename))
 			{
@@ -136,7 +136,7 @@ namespace nes_emulator.src
 						default: throw new NotImplementedException("The cartridge uses an unsupported type of mapper!");
 					}
 
-					imageValid = true;
+					ImageValid = true;
 					Console.WriteLine("Cartridge load successfully!");
 				}
 			}
@@ -148,6 +148,9 @@ namespace nes_emulator.src
 
 		public bool CPURead(ushort addr, ref byte data)
 		{
+			if (!ImageValid)
+				return false;
+
 			uint mapped_addr = 0;
 
 			if(mapper.CPUMapRead(addr, ref mapped_addr, ref data))
@@ -171,6 +174,9 @@ namespace nes_emulator.src
 
 		public bool CPUWrite(ushort addr, byte data) 
 		{
+			if (!ImageValid)
+				return false;
+
 			uint mapped_addr = 0;
 
 			if (mapper.CPUMapWrite(addr, ref mapped_addr, data))
@@ -194,6 +200,9 @@ namespace nes_emulator.src
 
 		public bool PPURead(ushort addr, ref byte data)
 		{
+			if(!ImageValid)
+				return false;
+
 			uint mapped_addr = 0;
 
 			if (mapper.PPUMapRead(addr, ref mapped_addr))
@@ -207,6 +216,9 @@ namespace nes_emulator.src
 
 		public bool PPUWrite(ushort addr, byte data)
 		{
+			if (!ImageValid)
+				return false;
+			
 			uint mapped_addr = 0;
 
 			if (mapper.PPUMapWrite(addr, ref mapped_addr))

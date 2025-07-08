@@ -24,13 +24,6 @@ namespace nes_emulator.src
 
 			}
 
-			public Sequencer(uint _sequence, ushort _timer, ushort _reload)
-			{
-				Sequence = _sequence;
-				Timer = _timer;
-				Reload = _reload;
-			}
-
 			public byte Clock(bool _enable, Action<uint> _funcMapip)
 			{
 				if(_enable)
@@ -38,7 +31,7 @@ namespace nes_emulator.src
 					Timer--;
 					if(Timer == 0xFFFF)
 					{
-						Timer = (ushort)(Reload + 1);
+						Timer = Reload;
 
 						_funcMapip(Sequence);
 
@@ -236,7 +229,7 @@ namespace nes_emulator.src
 		private LengthCounter noiseLC = new LengthCounter();
 		private Sequencer noiseSequencer = new Sequencer();
 
-		private static byte[] length_table = new byte[]
+		private static byte[] lengthTable = 
 		{
 			10, 254, 20,  2, 40,  4, 80,  6,
 			160,   8, 60, 10, 14, 12, 26, 14,
@@ -287,7 +280,7 @@ namespace nes_emulator.src
 					pulse1Sequencer.Reload = (ushort)((data & 0x07) << 8 | (pulse1Sequencer.Reload & 0x00FF));
 					pulse1Sequencer.Timer = pulse1Sequencer.Reload;
 					pulse1Sequencer.Sequence = pulse1Sequencer.NewSequence;
-					pulse1LC.Counter = length_table[(data & 0xF8) >> 3];
+					pulse1LC.Counter = lengthTable[(data & 0xF8) >> 3];
 					pulse1Envelope.Start = true;
 					break;
 				case 0x4004:
@@ -318,7 +311,7 @@ namespace nes_emulator.src
 					pulse2Sequencer.Reload = (ushort)((data & 0x07) << 8 | (pulse2Sequencer.Reload & 0x00FF));
 					pulse2Sequencer.Timer = pulse2Sequencer.Reload;
 					pulse2Sequencer.Sequence = pulse2Sequencer.NewSequence;
-					pulse2LC.Counter = length_table[(data & 0xF8) >> 3];
+					pulse2LC.Counter = lengthTable[(data & 0xF8) >> 3];
 					pulse2Envelope.Start = true;
 					break;
 				case 0x4008:
@@ -358,14 +351,21 @@ namespace nes_emulator.src
 					pulse1Envelope.Start = true;
 					pulse2Envelope.Start = true;
 					noiseEnvelope.Start = true;
-					noiseLC.Counter = length_table[(data & 0xF8) >> 3];
+					noiseLC.Counter = lengthTable[(data & 0xF8) >> 3];
 					break;
 			}
 		}
 
 		public byte CPURead(ushort addr) 
-		{ 
-			return 0; 
+		{
+			byte data = 0x00;
+
+			if(addr == 0x4015)
+			{
+
+			}
+
+			return data;
 		}
 
 		public void Clock()
@@ -425,10 +425,10 @@ namespace nes_emulator.src
 				}
 
 				// Update Pulse1 Channel ==========================
-				pulse1Sequencer.Clock(pulse1_enable, (uint s) =>
+				pulse1Sequencer.Clock(pulse1_enable, s =>
 				{
 					// Shift right by 1 bit, wrapping around
-					s = (byte)(((s & 0x0001) << 7) | ((s & 0x00FE) >> 1));
+					s = ((s & 0x0001) << 7) | ((s & 0x00FE) >> 1);
 				});
 
 				pulse1Osculator.Frequency = 1789773.0 / (16.0 * (double)(pulse1Sequencer.Reload + 1));
@@ -441,10 +441,10 @@ namespace nes_emulator.src
 					pulse1_output = 0;
 
 				// Update Pulse2 Channel ==========================
-				pulse2Sequencer.Clock(pulse2_enable, (uint s) =>
+				pulse2Sequencer.Clock(pulse2_enable, s =>
 				{
 					// Shift right by 1 bit, wrapping around
-					s = (byte)(((s & 0x0001) << 7) | ((s & 0x00FE) >> 1));
+					s = ((s & 0x0001) << 7) | ((s & 0x00FE) >> 1);
 				});
 
 				pulse2Osculator.Frequency = 1789773.0 / (16.0 * (double)(pulse2Sequencer.Reload + 1));
@@ -456,7 +456,7 @@ namespace nes_emulator.src
 				else
 					pulse2_output = 0;
 
-				noiseSequencer.Clock(noise_enable, (uint s) =>
+				noiseSequencer.Clock(noise_enable, s =>
 				{
 					s = (((s & 0x0001) ^ ((s & 0x0002) >> 1)) << 14) | ((s & 0x7FFF) >> 1);
 				});
